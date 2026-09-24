@@ -1,16 +1,21 @@
 -- ============================================
--- By boom | วิ่งไว + บินได้ (D-Pad 6 ทิศ + อนิเมชั่น)
--- + มองทะลุ + เห็นชื่อ + เมนูเช็คชื่อ/ส่องกล้อง
+-- By Boomxico | วิ่งไว + บินได้ (PC/Mobile) + มองทะลุ + เห็นชื่อ
+-- + เมนูเช็คชื่อ/ส่องกล้อง
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
+
+-- ตรวจแพลตฟอร์ม
+local isPC = UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled
+local isMobile = UserInputService.TouchEnabled
 
 local speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
 local runSpeed, flySpeed = 50, 50
@@ -19,6 +24,7 @@ local isOpen = true
 local scriptAlive = true
 
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
+local pcKeys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
 
 -- อนิเมชั่นวิ่ง
 local runAnimator = humanoid:FindFirstChildOfClass("Animator")
@@ -28,7 +34,7 @@ if not runAnimator then
 end
 local runAnimTrack = nil
 
--- ระบบส่องกล้อง
+-- ส่องกล้อง
 local spectateTarget = nil
 local spectateEnabled = false
 
@@ -77,7 +83,7 @@ ms.Color = Color3.fromRGB(0, 170, 255); ms.Thickness = 2
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 38)
 title.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-title.Text = "Tricky | By boom"
+title.Text = "Tricky | By Boomxico"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.SourceSansBold
 title.TextSize = 17
@@ -163,7 +169,7 @@ closeBtn.TextSize = 14
 closeBtn.Parent = main
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 17)
 
--- ============ D-Pad บิน ============
+-- ============ D-Pad บิน (เฉพาะมือถือ) ============
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
 pad.Position = UDim2.new(1, -200, 0.5, -90)
@@ -200,6 +206,26 @@ local function bind(b, key)
 end
 bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F")
 
+-- ============ คีย์บอร์ด PC ============
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.W then pcKeys.W = true end
+    if input.KeyCode == Enum.KeyCode.A then pcKeys.A = true end
+    if input.KeyCode == Enum.KeyCode.S then pcKeys.S = true end
+    if input.KeyCode == Enum.KeyCode.D then pcKeys.D = true end
+    if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = true end
+    if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = true end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then pcKeys.W = false end
+    if input.KeyCode == Enum.KeyCode.A then pcKeys.A = false end
+    if input.KeyCode == Enum.KeyCode.S then pcKeys.S = false end
+    if input.KeyCode == Enum.KeyCode.D then pcKeys.D = false end
+    if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = false end
+    if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
+end)
+
 -- ============ ปุ่มเปิดเมนู "เช็คชื่อ" ============
 local checkBtn = Instance.new("TextButton")
 checkBtn.Size = UDim2.new(0, 90, 0, 55)
@@ -232,10 +258,10 @@ cms.Color = Color3.fromRGB(150, 80, 200); cms.Thickness = 2
 local cTitle = Instance.new("TextLabel")
 cTitle.Size = UDim2.new(1, 0, 0, 38)
 cTitle.BackgroundColor3 = Color3.fromRGB(150, 80, 200)
-cTitle.Text = "เช็คชื่อในแมพ"
+cTitle.Text = "เช็คชื่อ | By Boomxico"
 cTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 cTitle.Font = Enum.Font.SourceSansBold
-cTitle.TextSize = 17
+cTitle.TextSize = 16
 cTitle.Parent = checkMenu
 Instance.new("UICorner", cTitle).CornerRadius = UDim.new(0, 16)
 
@@ -363,7 +389,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============ บิน (D-Pad 6 ทิศ + อนิเมชั่น) ============
+-- ============ บิน ============
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
@@ -392,7 +418,9 @@ local function startFly()
         pcall(function() runAnimTrack:Play(0.1) end)
     end
 
-    pad.Visible = true
+    if isMobile then
+        pad.Visible = true
+    end
 end
 
 local function stopFly()
@@ -443,12 +471,24 @@ RunService.RenderStepped:Connect(function()
 
         local cam = workspace.CurrentCamera
         local mv = Vector3.new(0, 0, 0)
-        if dirs.F then mv = mv + cam.CFrame.LookVector end
-        if dirs.B then mv = mv - cam.CFrame.LookVector end
-        if dirs.L then mv = mv - cam.CFrame.RightVector end
-        if dirs.R then mv = mv + cam.CFrame.RightVector end
-        if dirs.U then mv = mv + Vector3.new(0, 1, 0) end
-        if dirs.D then mv = mv - Vector3.new(0, 1, 0) end
+
+        if isMobile then
+            if dirs.F then mv = mv + cam.CFrame.LookVector end
+            if dirs.B then mv = mv - cam.CFrame.LookVector end
+            if dirs.L then mv = mv - cam.CFrame.RightVector end
+            if dirs.R then mv = mv + cam.CFrame.RightVector end
+            if dirs.U then mv = mv + Vector3.new(0, 1, 0) end
+            if dirs.D then mv = mv - Vector3.new(0, 1, 0) end
+        end
+
+        if isPC then
+            if pcKeys.W then mv = mv + cam.CFrame.LookVector end
+            if pcKeys.S then mv = mv - cam.CFrame.LookVector end
+            if pcKeys.A then mv = mv - cam.CFrame.RightVector end
+            if pcKeys.D then mv = mv + cam.CFrame.RightVector end
+            if pcKeys.Space then mv = mv + Vector3.new(0, 1, 0) end
+            if pcKeys.Shift then mv = mv - Vector3.new(0, 1, 0) end
+        end
 
         local jitter = 1 + (math.random() - 0.5) * 0.03
         bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed * jitter) or Vector3.new(0, 0, 0)
@@ -631,8 +671,8 @@ local function spectatePlayer(targetPlayer)
     cam.CameraType = Enum.CameraType.Custom
 end
 
--- ★ บังคับ CameraSubject ทุกเฟรมตอนส่องกล้อง (กันเด้งกลับ)
-RunService.RenderStepped:Connect(function()
+-- ★ BindToRenderStep priority สูงกว่า Camera (แก้เด้ง)
+RunService:BindToRenderStep("BoomSpectate", Enum.RenderPriority.Camera.Value + 1, function()
     if not scriptAlive then return end
     if spectateEnabled and spectateTarget then
         local targetChar = spectateTarget.Character
@@ -640,12 +680,8 @@ RunService.RenderStepped:Connect(function()
             local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
             if targetHum then
                 local cam = workspace.CurrentCamera
-                if cam.CameraSubject ~= targetHum then
-                    cam.CameraSubject = targetHum
-                end
-                if cam.CameraType ~= Enum.CameraType.Custom then
-                    cam.CameraType = Enum.CameraType.Custom
-                end
+                cam.CameraType = Enum.CameraType.Custom
+                cam.CameraSubject = targetHum
             end
         end
     end
@@ -711,7 +747,7 @@ local function refreshPlayerList()
     end
 end
 
--- อัปเดตระยะทุก 0.5 วิ
+-- อัปเดตระยะ
 task.spawn(function()
     while scriptAlive do
         task.wait(0.5)
@@ -843,4 +879,4 @@ player.CharacterAdded:Connect(function(nc)
     refreshESP(); refreshNames()
 end)
 
-print("Boom script loaded OK")
+print("Boom script loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
