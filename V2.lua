@@ -1,6 +1,6 @@
 -- ============================================
 -- By Boomxico | วิ่งไว + บินได้ (PC/Mobile) + มองทะลุ + เห็นชื่อ
--- + เมนูเช็คชื่อ/ส่องกล้อง
+-- + เมนูเช็คชื่อ/ส่องกล้อง (Scriptable Camera)
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -13,7 +13,6 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- ตรวจแพลตฟอร์ม
 local isPC = UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled
 local isMobile = UserInputService.TouchEnabled
 
@@ -37,6 +36,12 @@ local runAnimTrack = nil
 -- ส่องกล้อง
 local spectateTarget = nil
 local spectateEnabled = false
+local spectateYaw = 0
+local spectatePitch = -10
+local spectateDist = 12
+local lastMouseX = 0
+local lastMouseY = 0
+local mouseDown = false
 
 local MAX_SPEED = 200
 local MAX_FLY = 300
@@ -48,7 +53,9 @@ local espObjects, nameObjects = {}, {}
 local nameData = {}
 local playerRows = {}
 
--- ============ UI หลัก ============
+-- ============================================
+-- UI หลัก
+-- ============================================
 local gui = Instance.new("ScreenGui")
 gui.Name = "ByBoomMenu"
 gui.ResetOnSpawn = false
@@ -83,7 +90,7 @@ ms.Color = Color3.fromRGB(0, 170, 255); ms.Thickness = 2
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 38)
 title.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-title.Text = "Tricky | By Boomxico"
+title.Text = "By Boomxico"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.SourceSansBold
 title.TextSize = 17
@@ -169,7 +176,9 @@ closeBtn.TextSize = 14
 closeBtn.Parent = main
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 17)
 
--- ============ D-Pad บิน (เฉพาะมือถือ) ============
+-- ============================================
+-- D-Pad บิน (เฉพาะมือถือ)
+-- ============================================
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
 pad.Position = UDim2.new(1, -200, 0.5, -90)
@@ -206,7 +215,9 @@ local function bind(b, key)
 end
 bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F")
 
--- ============ คีย์บอร์ด PC ============
+-- ============================================
+-- คีย์บอร์ด PC
+-- ============================================
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.W then pcKeys.W = true end
@@ -226,7 +237,9 @@ UserInputService.InputEnded:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
 end)
 
--- ============ ปุ่มเปิดเมนู "เช็คชื่อ" ============
+-- ============================================
+-- ปุ่มเปิดเมนู "เช็คชื่อ"
+-- ============================================
 local checkBtn = Instance.new("TextButton")
 checkBtn.Size = UDim2.new(0, 90, 0, 55)
 checkBtn.Position = UDim2.new(0, 20, 0, 165)
@@ -242,7 +255,9 @@ Instance.new("UICorner", checkBtn).CornerRadius = UDim.new(0, 12)
 local cs = Instance.new("UIStroke", checkBtn)
 cs.Color = Color3.fromRGB(255, 255, 255); cs.Thickness = 2
 
--- ============ เมนู "เช็คชื่อ" ============
+-- ============================================
+-- เมนู "เช็คชื่อ"
+-- ============================================
 local checkMenu = Instance.new("Frame")
 checkMenu.Size = UDim2.new(0, 260, 0, 400)
 checkMenu.Position = UDim2.new(0.5, -130, 0.5, -200)
@@ -258,7 +273,7 @@ cms.Color = Color3.fromRGB(150, 80, 200); cms.Thickness = 2
 local cTitle = Instance.new("TextLabel")
 cTitle.Size = UDim2.new(1, 0, 0, 38)
 cTitle.BackgroundColor3 = Color3.fromRGB(150, 80, 200)
-cTitle.Text = "เช็คชื่อ | By Boomxico"
+cTitle.Text = "By Boomxico"
 cTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 cTitle.Font = Enum.Font.SourceSansBold
 cTitle.TextSize = 16
@@ -309,14 +324,9 @@ cCloseBtn.TextSize = 14
 cCloseBtn.Parent = checkMenu
 Instance.new("UICorner", cCloseBtn).CornerRadius = UDim.new(0, 8)
 
--- ============ ปุ่มพับเมนูหลัก ============
-toggleBtn.MouseButton1Click:Connect(function()
-    isOpen = not isOpen
-    main.Visible = isOpen
-    toggleBtn.BackgroundColor3 = isOpen and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(200, 100, 0)
-end)
-
--- ============ Helper ============
+-- ============================================
+-- Helper
+-- ============================================
 local function canToggle()
     local now = tick()
     if now - lastToggleTime < TOGGLE_COOLDOWN then return false end
@@ -330,7 +340,18 @@ local function clamp(v, minV, maxV)
     return v
 end
 
--- ============ ดึงอนิเมชั่นวิ่ง ============
+-- ============================================
+-- ปุ่มพับเมนูหลัก
+-- ============================================
+toggleBtn.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    main.Visible = isOpen
+    toggleBtn.BackgroundColor3 = isOpen and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(200, 100, 0)
+end)
+
+-- ============================================
+-- ดึงอนิเมชั่นวิ่ง
+-- ============================================
 local function getGameRunTrack()
     if not runAnimator then return nil end
     local tracks = runAnimator:GetPlayingAnimationTracks()
@@ -366,7 +387,9 @@ local function getGameRunTrack()
     return nil
 end
 
--- ============ วิ่งไว ============
+-- ============================================
+-- วิ่งไว
+-- ============================================
 spdBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     speedEnabled = not speedEnabled
@@ -389,7 +412,9 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============ บิน ============
+-- ============================================
+-- บิน
+-- ============================================
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
@@ -495,7 +520,9 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ============ มองทะลุ (ESP) ============
+-- ============================================
+-- มองทะลุ (ESP)
+-- ============================================
 local function clearESP()
     for _, obj in pairs(espObjects) do if obj then obj:Destroy() end end
     espObjects = {}
@@ -531,7 +558,9 @@ espBtn.MouseButton1Click:Connect(function()
     refreshESP()
 end)
 
--- ============ เห็นชื่อ ============
+-- ============================================
+-- เห็นชื่อ
+-- ============================================
 local function clearNames()
     for _, obj in pairs(nameObjects) do if obj then obj:Destroy() end end
     nameObjects = {}
@@ -635,7 +664,9 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ============ ฟังก์ชันส่องกล้อง ============
+-- ============================================
+-- ฟังก์ชันส่องกล้อง (Scriptable Camera)
+-- ============================================
 local function stopSpectate()
     spectateEnabled = false
     spectateTarget = nil
@@ -660,34 +691,89 @@ local function spectatePlayer(targetPlayer)
         end)
         if not ok or not targetChar then return end
     end
-    local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
-    if not targetHum then return end
 
     spectateEnabled = true
     spectateTarget = targetPlayer
-
-    local cam = workspace.CurrentCamera
-    cam.CameraSubject = targetHum
-    cam.CameraType = Enum.CameraType.Custom
+    spectateYaw = 0
+    spectatePitch = -10
+    spectateDist = 12
 end
 
--- ★ BindToRenderStep priority สูงกว่า Camera (แก้เด้ง)
-RunService:BindToRenderStep("BoomSpectate", Enum.RenderPriority.Camera.Value + 1, function()
+-- ★ บังคับ CFrame กล้องเองทุกเฟรม (วิธี Scriptable)
+RunService:BindToRenderStep("BoomSpectate", Enum.RenderPriority.Camera.Value + 1, function(dt)
     if not scriptAlive then return end
-    if spectateEnabled and spectateTarget then
-        local targetChar = spectateTarget.Character
-        if targetChar then
-            local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
-            if targetHum then
-                local cam = workspace.CurrentCamera
-                cam.CameraType = Enum.CameraType.Custom
-                cam.CameraSubject = targetHum
-            end
-        end
+    if not spectateEnabled or not spectateTarget then return end
+
+    local targetChar = spectateTarget.Character
+    if not targetChar then return end
+    local targetHead = targetChar:FindFirstChild("Head")
+    if not targetHead then return end
+
+    local cam = workspace.CurrentCamera
+    cam.CameraType = Enum.CameraType.Scriptable
+
+    local yawRad = math.rad(spectateYaw)
+    local pitchRad = math.rad(spectatePitch)
+    local offset = Vector3.new(
+        math.sin(yawRad) * math.cos(pitchRad) * spectateDist,
+        -math.sin(pitchRad) * spectateDist + 2,
+        math.cos(yawRad) * math.cos(pitchRad) * spectateDist
+    )
+    local camPos = targetHead.Position + offset
+    local lookAt = targetHead.Position
+
+    cam.CFrame = CFrame.new(camPos, lookAt)
+end)
+
+-- ★ ควบคุมการหมุนกล้อง
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if not spectateEnabled then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        mouseDown = true
+        lastMouseX = input.Position.X
+        lastMouseY = input.Position.Y
+    end
+    if input.UserInputType == Enum.UserInputType.Touch then
+        mouseDown = true
+        lastMouseX = input.Position.X
+        lastMouseY = input.Position.Y
+    end
+    if input.UserInputType == Enum.UserInputType.MouseWheel then
+        spectateDist = math.clamp(spectateDist - input.Position.Z * 2, 4, 50)
     end
 end)
 
--- ============ รายชื่อผู้เล่น ============
+UserInputService.InputChanged:Connect(function(input, gp)
+    if not spectateEnabled then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement and mouseDown then
+        local dx = input.Position.X - lastMouseX
+        local dy = input.Position.Y - lastMouseY
+        lastMouseX = input.Position.X
+        lastMouseY = input.Position.Y
+        spectateYaw = spectateYaw + dx * 0.3
+        spectatePitch = math.clamp(spectatePitch - dy * 0.3, -80, 80)
+    end
+    if input.UserInputType == Enum.UserInputType.Touch and mouseDown then
+        local dx = input.Position.X - lastMouseX
+        local dy = input.Position.Y - lastMouseY
+        lastMouseX = input.Position.X
+        lastMouseY = input.Position.Y
+        spectateYaw = spectateYaw + dx * 0.5
+        spectatePitch = math.clamp(spectatePitch - dy * 0.5, -80, 80)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2
+       or input.UserInputType == Enum.UserInputType.Touch then
+        mouseDown = false
+    end
+end)
+
+-- ============================================
+-- รายชื่อผู้เล่น
+-- ============================================
 local function refreshPlayerList()
     for _, data in pairs(playerRows) do
         if data and data.row then data.row:Destroy() end
@@ -774,14 +860,16 @@ task.spawn(function()
         if spectateEnabled and spectateTarget then
             if not spectateTarget.Parent
                or not spectateTarget.Character
-               or not spectateTarget.Character:FindFirstChildOfClass("Humanoid") then
+               or not spectateTarget.Character:FindFirstChild("Head") then
                 stopSpectate()
             end
         end
     end
 end)
 
--- ============ ปุ่มเปิด/ปิดเมนูเช็คชื่อ ============
+-- ============================================
+-- ปุ่มเปิด/ปิดเมนูเช็คชื่อ
+-- ============================================
 checkBtn.MouseButton1Click:Connect(function()
     checkMenu.Visible = not checkMenu.Visible
     if checkMenu.Visible then
@@ -806,7 +894,9 @@ Players.PlayerRemoving:Connect(function(p)
     if checkMenu.Visible then refreshPlayerList() end
 end)
 
--- ============ ผู้เล่นเข้า/ออก (ESP/Name) ============
+-- ============================================
+-- ผู้เล่นเข้า/ออก (ESP/Name)
+-- ============================================
 Players.PlayerAdded:Connect(function(p)
     p.CharacterAdded:Connect(function(c)
         task.wait(0.5)
@@ -828,7 +918,9 @@ for _, p in pairs(Players:GetPlayers()) do
     end
 end
 
--- ============ ปุ่มปิดสคริปต์ทั้งหมด ============
+-- ============================================
+-- ปุ่มปิดสคริปต์ทั้งหมด
+-- ============================================
 local function killScript()
     scriptAlive = false
     speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
@@ -847,14 +939,18 @@ end
 
 killBtn.MouseButton1Click:Connect(killScript)
 
--- ============ ซ่อนเมนู ============
+-- ============================================
+-- ซ่อนเมนู
+-- ============================================
 closeBtn.MouseButton1Click:Connect(function()
     main.Visible = false
     isOpen = false
     toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
 end)
 
--- ============ เกิดใหม่ ============
+-- ============================================
+-- เกิดใหม่
+-- ============================================
 player.CharacterAdded:Connect(function(nc)
     character = nc
     humanoid = character:WaitForChild("Humanoid")
