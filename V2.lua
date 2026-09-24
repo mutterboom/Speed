@@ -1,5 +1,5 @@
 -- ============================================
--- By boom | วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ
+-- By boom | วิ่งไว + บินได้ (อนิเมชั่นวิ่งตามแมพ) + มองทะลุ + เห็นชื่อ
 -- + Anti-Detection Layer (เบาๆ)
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -19,12 +19,10 @@ local isOpen = true
 local flyUp, flyDown = false, false
 
 -- Anti-detect
-local MAX_SPEED = 200          -- เพดานกันค่าสูงเกิน
+local MAX_SPEED = 200
 local MAX_FLY = 300
 local lastToggleTime = 0
-local TOGGLE_COOLDOWN = 0.4    -- หน่วงเปิด/ปิด กันถูกจับตอนกดรัวๆ
-local jitterBaseSpeed = 16     -- ค่า WalkSpeed ปลอมที่โชว์ Anti-Cheat
-local fakeWalkSpeed = 16
+local TOGGLE_COOLDOWN = 0.4
 
 local espObjects, nameObjects = {}, {}
 
@@ -156,7 +154,7 @@ toggleBtn.MouseButton1Click:Connect(function()
     toggleBtn.BackgroundColor3 = isOpen and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(200, 100, 0)
 end)
 
--- ============ Helper: Anti-Detect ============
+-- ============ Helper ============
 local function canToggle()
     local now = tick()
     if now - lastToggleTime < TOGGLE_COOLDOWN then return false end
@@ -170,7 +168,7 @@ local function clamp(v, minV, maxV)
     return v
 end
 
--- ============ วิ่งไว (มี jitter + clamp) ============
+-- ============ วิ่งไว ============
 spdBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     speedEnabled = not speedEnabled
@@ -181,48 +179,41 @@ end)
 
 spdBox.FocusLost:Connect(function()
     local v = tonumber(spdBox.Text)
-    if v and v > 0 then
-        runSpeed = clamp(v, 1, MAX_SPEED)
-    else
-        spdBox.Text = "50"; runSpeed = 50
-    end
-end)
-
--- เก็บค่า WalkSpeed ปลอมไว้โชว์ Anti-Cheat
-task.spawn(function()
-    while task.wait(0.5) do
-        if speedEnabled then
-            -- เด้งค่าปลอมไปมาระหว่าง 16-18 ให้ดูเป็นธรรมชาติ
-            fakeWalkSpeed = 16 + math.random() * 2
-        end
-    end
+    if v and v > 0 then runSpeed = clamp(v, 1, MAX_SPEED)
+    else spdBox.Text = "50"; runSpeed = 50 end
 end)
 
 RunService.Heartbeat:Connect(function()
     if speedEnabled and humanoid and humanoid.Parent == character then
-        -- jitter: สุ่มค่าจริง ±2%
         local jitter = 1 + (math.random() - 0.5) * 0.04
         humanoid.WalkSpeed = runSpeed * jitter
     end
 end)
 
--- ============ บิน ============
+-- ============ บิน (อนิเมชั่นวิ่งตามแมพ) ============
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
     rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 3, 0)
+
     bodyVel = Instance.new("BodyVelocity")
     bodyVel.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bodyVel.Velocity = Vector3.new(0, 0, 0)
     bodyVel.P = 1250
     bodyVel.Parent = rootPart
+
     bodyGyro = Instance.new("BodyGyro")
     bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
     bodyGyro.P = 3000
     bodyGyro.D = 50
     bodyGyro.CFrame = rootPart.CFrame
     bodyGyro.Parent = rootPart
-    humanoid.PlatformStand = true
+
+    -- *** หัวใจสำคัญ: ไม่ใช้ PlatformStand ***
+    -- ปล่อยให้ humanoid อยู่ใน Running state → Animate script ของเกมจะเล่นอนิเมชั่นวิ่งเอง
+    humanoid.PlatformStand = false
+    humanoid:ChangeState(Enum.HumanoidStateType.Running)
+
     upBtn.Visible = true
     dnBtn.Visible = true
 end
@@ -230,10 +221,13 @@ end
 local function stopFly()
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
+
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         humanoid.WalkSpeed = speedEnabled and runSpeed or 16
     end
+
     upBtn.Visible = false
     dnBtn.Visible = false
     flyUp, flyDown = false, false
@@ -249,16 +243,20 @@ end)
 
 flyBox.FocusLost:Connect(function()
     local v = tonumber(flyBox.Text)
-    if v and v > 0 then
-        flySpeed = clamp(v, 1, MAX_FLY)
-    else
-        flyBox.Text = "50"; flySpeed = 50
-    end
+    if v and v > 0 then flySpeed = clamp(v, 1, MAX_FLY)
+    else flyBox.Text = "50"; flySpeed = 50 end
 end)
 
 RunService.RenderStepped:Connect(function()
     if flyEnabled and bodyVel and rootPart.Parent == character then
-        if not humanoid.PlatformStand then humanoid.PlatformStand = true end
+        -- *** บังคับ Running state ทุกเฟรม ***
+        -- ป้องกันเกมพยายามเปลี่ยน state เป็น Freefall หรือ Swimming
+        local state = humanoid:GetState()
+        if state ~= Enum.HumanoidStateType.Running then
+            humanoid:ChangeState(Enum.HumanoidStateType.Running)
+        end
+        humanoid.PlatformStand = false
+
         if bodyGyro then bodyGyro.CFrame = workspace.CurrentCamera.CFrame end
 
         local cam = workspace.CurrentCamera
@@ -276,7 +274,6 @@ RunService.RenderStepped:Connect(function()
         if flyUp then mv = mv + Vector3.new(0, 1, 0) end
         if flyDown then mv = mv - Vector3.new(0, 1, 0) end
 
-        -- jitter เบาๆ ตอนบิน
         local jitter = 1 + (math.random() - 0.5) * 0.03
         bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed * jitter) or Vector3.new(0, 0, 0)
     end
@@ -371,7 +368,6 @@ nameBtn.MouseButton1Click:Connect(function()
     refreshNames()
 end)
 
--- ผู้เล่นเข้า/ออก
 Players.PlayerAdded:Connect(function(p)
     p.CharacterAdded:Connect(function(c)
         task.wait(0.5)
