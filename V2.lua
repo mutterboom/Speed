@@ -1,5 +1,5 @@
 -- ============================================
--- By boom | วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อทะลุกำแพง
+-- By boom | วิ่งไว + บินได้ (หันตามกล้อง) + มองทะลุ + เห็นชื่อทะลุกำแพง
 -- + Anti-Detection Layer + ปุ่มปิดสคริปต์ + ปรับระยะชื่อใน UI
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -24,7 +24,7 @@ local MAX_SPEED = 200
 local MAX_FLY = 300
 local lastToggleTime = 0
 local TOGGLE_COOLDOWN = 0.4
-local NAME_MAX_DIST = 800     -- ระยะไกลสุดที่เห็นชื่อ (ปรับผ่าน UI ได้)
+local NAME_MAX_DIST = 800
 
 local espObjects, nameObjects = {}, {}
 local nameData = {}
@@ -106,7 +106,6 @@ espBtn.Text = "มองทะลุ: ปิด"; espBox.Visible = false
 local nameBtn, nameBox = mkRow(0.54)
 nameBtn.Text = "เห็นชื่อ: ปิด"; nameBox.Visible = false
 
--- ★ แถวปรับระยะชื่อ
 local distBtn = Instance.new("TextButton")
 distBtn.Size = UDim2.new(0.55, 0, 0, 36)
 distBtn.Position = UDim2.new(0.05, 0, 0.68, 0)
@@ -228,7 +227,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============ บิน (ทิศตามตัวละคร) ============
+-- ============ บิน (หันตามกล้อง) ============
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
@@ -244,7 +243,7 @@ local function startFly()
     bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
     bodyGyro.P = 3000
     bodyGyro.D = 50
-    bodyGyro.CFrame = rootPart.CFrame
+    bodyGyro.CFrame = workspace.CurrentCamera.CFrame
     bodyGyro.Parent = rootPart
 
     humanoid.PlatformStand = false
@@ -292,16 +291,19 @@ RunService.RenderStepped:Connect(function()
         end
         humanoid.PlatformStand = false
 
-        if bodyGyro then bodyGyro.CFrame = rootPart.CFrame end
+        if bodyGyro then
+            bodyGyro.CFrame = workspace.CurrentCamera.CFrame
+        end
 
+        local cam = workspace.CurrentCamera
         local mv = Vector3.new(0, 0, 0)
         local move = humanoid.MoveDirection
 
         if move.Magnitude > 0 then
-            local charLook = rootPart.CFrame.LookVector
-            local charRight = rootPart.CFrame.RightVector
-            local flatLook = Vector3.new(charLook.X, 0, charLook.Z).Unit
-            local flatRight = Vector3.new(charRight.X, 0, charRight.Z).Unit
+            local camLook = cam.CFrame.LookVector
+            local camRight = cam.CFrame.RightVector
+            local flatLook = Vector3.new(camLook.X, 0, camLook.Z).Unit
+            local flatRight = Vector3.new(camRight.X, 0, camRight.Z).Unit
             mv = (flatLook * move.Z + flatRight * move.X)
         end
 
@@ -349,7 +351,7 @@ espBtn.MouseButton1Click:Connect(function()
     refreshESP()
 end)
 
--- ============ เห็นชื่อ (ทะลุกำแพง + มองตามกล้อง + ปรับระยะได้) ============
+-- ============ เห็นชื่อ ============
 local function clearNames()
     for _, obj in pairs(nameObjects) do if obj then obj:Destroy() end end
     nameObjects = {}
@@ -405,7 +407,6 @@ nameBtn.MouseButton1Click:Connect(function()
     refreshNames()
 end)
 
--- ★ ปรับระยะชื่อผ่าน UI
 distBox.FocusLost:Connect(function()
     local v = tonumber(distBox.Text)
     if v and v > 0 then
@@ -416,7 +417,6 @@ distBox.FocusLost:Connect(function()
     end
 end)
 
--- อัปเดตการมองเห็นชื่อทุกเฟรม
 RunService.RenderStepped:Connect(function()
     if not scriptAlive or not nameEnabled then return end
     local cam = workspace.CurrentCamera
