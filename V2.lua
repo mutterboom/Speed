@@ -18,14 +18,11 @@ local bodyVel, bodyGyro
 local isOpen = true
 local scriptAlive = true
 
--- D-Pad ทิศทางบิน
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
 
--- ระบบส่องกล้อง
 local spectateTarget = nil
 local spectateEnabled = false
 
--- Anti-detect
 local MAX_SPEED = 200
 local MAX_FLY = 300
 local lastToggleTime = 0
@@ -309,15 +306,14 @@ local function spectatePlayer(targetPlayer)
     spectateTarget = targetPlayer
 
     local cam = workspace.CurrentCamera
-    -- ★ ย้ายกล้องไปที่ตัวละครเป้าหมาย → เห็นภาพจากมุมของเขา
     cam.CameraSubject = targetHum
     cam.CameraType = Enum.CameraType.Custom
 end
 
 -- ============ สร้างรายชื่อผู้เล่น ============
 local function refreshPlayerList()
-    for _, row in pairs(playerRows) do
-        if row and row.row then row.row:Destroy() end
+    for _, data in pairs(playerRows) do
+        if data and data.row then data.row:Destroy() end
     end
     playerRows = {}
 
@@ -693,4 +689,78 @@ RunService.RenderStepped:Connect(function()
             else
                 local screenPoint, onScreen = cam:WorldToViewportPoint(headPos)
                 if onScreen and screenPoint.Z > 0
-                   and screenPoint.X > -50 and screenPoint.X < viewport.X +
+                   and screenPoint.X > -50 and screenPoint.X < viewport.X + 50
+                   and screenPoint.Y > -50 and screenPoint.Y < viewport.Y + 50 then
+                    bg.Enabled = true
+                else
+                    bg.Enabled = false
+                end
+            end
+        end
+    end
+end)
+
+-- ============ ผู้เล่นเข้า/ออก ============
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function(c)
+        task.wait(0.5)
+        if not scriptAlive then return end
+        if espEnabled then applyESP(c) end
+        if nameEnabled then applyName(c, p.Name) end
+    end)
+end)
+Players.PlayerRemoving:Connect(function() refreshESP(); refreshNames() end)
+
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= player then
+        p.CharacterAdded:Connect(function(c)
+            task.wait(0.5)
+            if not scriptAlive then return end
+            if espEnabled then applyESP(c) end
+            if nameEnabled then applyName(c, p.Name) end
+        end)
+    end
+end
+
+-- ============ ปุ่มปิดสคริปต์ทั้งหมด ============
+local function killScript()
+    scriptAlive = false
+    speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
+    stopFly()
+    stopSpectate()
+    clearESP()
+    clearNames()
+    if humanoid and humanoid.Parent == character then
+        humanoid.PlatformStand = false
+        humanoid.WalkSpeed = 16
+        humanoid.JumpPower = 50
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+    if gui then gui:Destroy() end
+end
+
+killBtn.MouseButton1Click:Connect(killScript)
+
+-- ============ ซ่อนเมนู ============
+closeBtn.MouseButton1Click:Connect(function()
+    main.Visible = false
+    isOpen = false
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
+end)
+
+-- ============ เกิดใหม่ ============
+player.CharacterAdded:Connect(function(nc)
+    character = nc
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    speedEnabled, flyEnabled = false, false
+    spdBtn.Text = "วิ่งไว: ปิด"; spdBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    flyBtn.Text = "บินได้: ปิด"; flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    if bodyVel then bodyVel:Destroy(); bodyVel = nil end
+    if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
+    pad.Visible = false
+    for k in pairs(dirs) do dirs[k] = false end
+    task.wait(1)
+    if not scriptAlive then return end
+    refreshESP(); refreshNames()
+end)
