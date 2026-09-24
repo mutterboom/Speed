@@ -1,13 +1,12 @@
 -- ============================================
--- By Boomxico | iOS Glass UI + Anti-Detect
--- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ
+-- By Boomxico | Dark Red Luxury UI + Anti-Detect
+-- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -55,30 +54,32 @@ local nameData = {}
 local playerRows = {}
 
 -- ============================================
--- สร้าง Blur Effect (iOS Glass)
+-- สีหลัก (Dark Red Luxury)
 -- ============================================
-local blur = Instance.new("BlurEffect")
-blur.Name = "BoomBlur"
-blur.Size = 0  -- เริ่มที่ 0 ไม่ให้เกมเบลอ
-blur.Parent = Lighting
+local COLOR_BG = Color3.fromRGB(12, 12, 14)
+local COLOR_BG_LIGHT = Color3.fromRGB(22, 22, 26)
+local COLOR_BORDER = Color3.fromRGB(180, 20, 20)
+local COLOR_TEXT = Color3.fromRGB(230, 230, 230)
+local COLOR_ACCENT = Color3.fromRGB(220, 30, 30)
+local COLOR_ACTIVE = Color3.fromRGB(200, 25, 25)
+local COLOR_DIM = Color3.fromRGB(140, 140, 150)
 
 -- ============================================
--- UI หลัก (iOS Glass Style)
+-- UI หลัก
 -- ============================================
 local gui = Instance.new("ScreenGui")
 gui.Name = "ByBoomMenu"
 gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- ปุ่มพับ (กลม โปร่งแสง)
+-- ปุ่มพับเมนูหลัก (B)
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0, 55, 0, 55)
 toggleBtn.Position = UDim2.new(0, 20, 0, 100)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-toggleBtn.BackgroundTransparency = 0.35
+toggleBtn.BackgroundColor3 = COLOR_BG
+toggleBtn.BackgroundTransparency = 0.15
 toggleBtn.Text = "B"
-toggleBtn.TextColor3 = Color3.fromRGB(0, 200, 255)
+toggleBtn.TextColor3 = COLOR_ACCENT
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.TextSize = 24
 toggleBtn.Active = true
@@ -86,211 +87,202 @@ toggleBtn.Draggable = true
 toggleBtn.Parent = gui
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
 local ts = Instance.new("UIStroke", toggleBtn)
-ts.Color = Color3.fromRGB(0, 200, 255)
+ts.Color = COLOR_BORDER
 ts.Thickness = 1.5
-ts.Transparency = 0.3
+ts.Transparency = 0.2
 
--- หน้าต่างหลัก (iOS Glass Card)
+-- หน้าต่างหลัก
 local main = Instance.new("Frame")
 main.Size = UDim2.new(0, 260, 0, 400)
 main.Position = UDim2.new(0, 20, 0, 165)
-main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-main.BackgroundTransparency = 0.25  -- โปร่งแสง
+main.BackgroundColor3 = COLOR_BG
+main.BackgroundTransparency = 0.1
 main.Active = true
 main.Draggable = true
 main.Parent = gui
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 24)
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 18)
 local ms = Instance.new("UIStroke", main)
-ms.Color = Color3.fromRGB(0, 200, 255)
-ms.Thickness = 1.2
-ms.Transparency = 0.5
+ms.Color = COLOR_BORDER
+ms.Thickness = 1.5
+ms.Transparency = 0.3
 
--- เงานุ่มด้านใน
-local shadow = Instance.new("Frame")
-shadow.Size = UDim2.new(1, 0, 0, 1)
-shadow.Position = UDim2.new(0, 0, 1, 0)
-shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-shadow.BackgroundTransparency = 1
-shadow.BorderSizePixel = 0
-shadow.Parent = main
+-- เส้นคาดบน
+local topLine = Instance.new("Frame")
+topLine.Size = UDim2.new(1, -30, 0, 2)
+topLine.Position = UDim2.new(0, 15, 0, 0)
+topLine.BackgroundColor3 = COLOR_ACCENT
+topLine.BorderSizePixel = 0
+topLine.Parent = main
+Instance.new("UICorner", topLine).CornerRadius = UDim.new(1, 0)
 
--- หัวข้อ Gradient
+-- หัวข้อ
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -20, 0, 44)
-title.Position = UDim2.new(0, 10, 0, 10)
-title.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-title.BackgroundTransparency = 0.6
-title.Text = "By Boomxico"
-title.TextColor3 = Color3.fromRGB(0, 200, 255)
+title.Size = UDim2.new(1, -20, 0, 42)
+title.Position = UDim2.new(0, 10, 0, 12)
+title.BackgroundTransparency = 1
+title.Text = "BY BOOMXICO"
+title.TextColor3 = COLOR_ACCENT
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.Parent = main
-Instance.new("UICorner", title).CornerRadius = UDim.new(0, 14)
 
-local titleGrad = Instance.new("UIGradient")
-titleGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 200, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 100, 255))
-})
-titleGrad.Parent = title
-
--- เส้นคั่นใต้หัวข้อ
+-- เส้นคั่น
 local divider = Instance.new("Frame")
-divider.Size = UDim2.new(1, -20, 0, 1)
-divider.Position = UDim2.new(0, 10, 0, 60)
-divider.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
-divider.BackgroundTransparency = 0.7
+divider.Size = UDim2.new(1, -30, 0, 1)
+divider.Position = UDim2.new(0, 15, 0, 60)
+divider.BackgroundColor3 = COLOR_BORDER
+divider.BackgroundTransparency = 0.5
 divider.BorderSizePixel = 0
 divider.Parent = main
 
 -- ============================================
--- ฟังก์ชันสร้างปุ่ม iOS Glass
+-- ฟังก์ชันสร้างปุ่ม
 -- ============================================
 local function mkRow(y, labelText, defaultVal)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0.52, 0, 0, 34)
     btn.Position = UDim2.new(0.05, 0, y, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    btn.BackgroundTransparency = 0.3
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.Gotham
+    btn.BackgroundColor3 = COLOR_BG_LIGHT
+    btn.BackgroundTransparency = 0.15
+    btn.TextColor3 = COLOR_TEXT
+    btn.Font = Enum.Font.GothamMedium
     btn.TextSize = 13
     btn.Text = labelText
     btn.Parent = main
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 14)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
     local bs = Instance.new("UIStroke", btn)
-    bs.Color = Color3.fromRGB(80, 80, 100)
+    bs.Color = Color3.fromRGB(60, 60, 70)
     bs.Thickness = 1
-    bs.Transparency = 0.6
+    bs.Transparency = 0.5
 
     local box = Instance.new("TextBox")
     box.Size = UDim2.new(0.3, 0, 0, 34)
     box.Position = UDim2.new(0.63, 0, y, 0)
-    box.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    box.BackgroundTransparency = 0.3
+    box.BackgroundColor3 = COLOR_BG_LIGHT
+    box.BackgroundTransparency = 0.15
     box.Text = defaultVal
-    box.TextColor3 = Color3.fromRGB(0, 200, 255)
+    box.TextColor3 = COLOR_ACCENT
     box.Font = Enum.Font.GothamBold
     box.TextSize = 13
     box.Parent = main
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 14)
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 10)
     local bxs = Instance.new("UIStroke", box)
-    bxs.Color = Color3.fromRGB(0, 200, 255)
+    bxs.Color = COLOR_BORDER
     bxs.Thickness = 1
-    bxs.Transparency = 0.5
+    bxs.Transparency = 0.4
 
     return btn, box
 end
 
-local spdBtn, spdBox = mkRow(0.18, "🏃 วิ่งไว: ปิด", "50")
-local flyBtn, flyBox = mkRow(0.30, "✈️ บินได้: ปิด", "50")
+local spdBtn, spdBox = mkRow(0.18, "วิ่งไว: ปิด", "50")
+local flyBtn, flyBox = mkRow(0.30, "บินได้: ปิด", "50")
 
 local espBtn = Instance.new("TextButton")
 espBtn.Size = UDim2.new(0.52, 0, 0, 34)
 espBtn.Position = UDim2.new(0.05, 0, 0.42, 0)
-espBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-espBtn.BackgroundTransparency = 0.3
-espBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-espBtn.Font = Enum.Font.Gotham
+espBtn.BackgroundColor3 = COLOR_BG_LIGHT
+espBtn.BackgroundTransparency = 0.15
+espBtn.TextColor3 = COLOR_TEXT
+espBtn.Font = Enum.Font.GothamMedium
 espBtn.TextSize = 13
-espBtn.Text = "👁️ มองทะลุ: ปิด"
+espBtn.Text = "มองทะลุ: ปิด"
 espBtn.Parent = main
-Instance.new("UICorner", espBtn).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", espBtn).CornerRadius = UDim.new(0, 10)
 local es = Instance.new("UIStroke", espBtn)
-es.Color = Color3.fromRGB(80, 80, 100); es.Thickness = 1; es.Transparency = 0.6
+es.Color = Color3.fromRGB(60, 60, 70); es.Thickness = 1; es.Transparency = 0.5
 
 local nameBtn = Instance.new("TextButton")
 nameBtn.Size = UDim2.new(0.52, 0, 0, 34)
 nameBtn.Position = UDim2.new(0.05, 0, 0.54, 0)
-nameBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-nameBtn.BackgroundTransparency = 0.3
-nameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-nameBtn.Font = Enum.Font.Gotham
+nameBtn.BackgroundColor3 = COLOR_BG_LIGHT
+nameBtn.BackgroundTransparency = 0.15
+nameBtn.TextColor3 = COLOR_TEXT
+nameBtn.Font = Enum.Font.GothamMedium
 nameBtn.TextSize = 13
-nameBtn.Text = "📝 เห็นชื่อ: ปิด"
+nameBtn.Text = "เห็นชื่อ: ปิด"
 nameBtn.Parent = main
-Instance.new("UICorner", nameBtn).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", nameBtn).CornerRadius = UDim.new(0, 10)
 local ns = Instance.new("UIStroke", nameBtn)
-ns.Color = Color3.fromRGB(80, 80, 100); ns.Thickness = 1; ns.Transparency = 0.6
+ns.Color = Color3.fromRGB(60, 60, 70); ns.Thickness = 1; ns.Transparency = 0.5
 
 local distLbl = Instance.new("TextLabel")
 distLbl.Size = UDim2.new(0.52, 0, 0, 34)
 distLbl.Position = UDim2.new(0.05, 0, 0.66, 0)
-distLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-distLbl.BackgroundTransparency = 0.3
-distLbl.Text = "📏 ระยะชื่อ"
-distLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-distLbl.Font = Enum.Font.Gotham
+distLbl.BackgroundColor3 = COLOR_BG_LIGHT
+distLbl.BackgroundTransparency = 0.15
+distLbl.Text = "ระยะชื่อ"
+distLbl.TextColor3 = COLOR_TEXT
+distLbl.Font = Enum.Font.GothamMedium
 distLbl.TextSize = 13
 distLbl.Parent = main
-Instance.new("UICorner", distLbl).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", distLbl).CornerRadius = UDim.new(0, 10)
 local ds = Instance.new("UIStroke", distLbl)
-ds.Color = Color3.fromRGB(80, 80, 100); ds.Thickness = 1; ds.Transparency = 0.6
+ds.Color = Color3.fromRGB(60, 60, 70); ds.Thickness = 1; ds.Transparency = 0.5
 
 local distBox = Instance.new("TextBox")
 distBox.Size = UDim2.new(0.3, 0, 0, 34)
 distBox.Position = UDim2.new(0.63, 0, 0.66, 0)
-distBox.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-distBox.BackgroundTransparency = 0.3
+distBox.BackgroundColor3 = COLOR_BG_LIGHT
+distBox.BackgroundTransparency = 0.15
 distBox.Text = "800"
-distBox.TextColor3 = Color3.fromRGB(0, 200, 255)
+distBox.TextColor3 = COLOR_ACCENT
 distBox.Font = Enum.Font.GothamBold
 distBox.TextSize = 13
 distBox.Parent = main
-Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 10)
 local dbs = Instance.new("UIStroke", distBox)
-dbs.Color = Color3.fromRGB(0, 200, 255); dbs.Thickness = 1; dbs.Transparency = 0.5
+dbs.Color = COLOR_BORDER; dbs.Thickness = 1; dbs.Transparency = 0.4
 
--- ปุ่มปิดสคริปต์ (แดง)
+-- ปุ่มปิดสคริปต์
 local killBtn = Instance.new("TextButton")
 killBtn.Size = UDim2.new(0.9, 0, 0, 34)
 killBtn.Position = UDim2.new(0.05, 0, 0.82, 0)
-killBtn.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
-killBtn.BackgroundTransparency = 0.15
-killBtn.Text = "🛑 ปิดสคริปต์ทั้งหมด"
+killBtn.BackgroundColor3 = Color3.fromRGB(140, 15, 15)
+killBtn.BackgroundTransparency = 0.1
+killBtn.Text = "ปิดสคริปต์ทั้งหมด"
 killBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 killBtn.Font = Enum.Font.GothamBold
 killBtn.TextSize = 13
 killBtn.Parent = main
-Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 10)
 local ks = Instance.new("UIStroke", killBtn)
-ks.Color = Color3.fromRGB(255, 100, 100); ks.Thickness = 1; ks.Transparency = 0.3
+ks.Color = COLOR_ACCENT; ks.Thickness = 1; ks.Transparency = 0.2
 
--- ปุ่มซ่อนเมนู (โปร่ง)
+-- ปุ่มซ่อนเมนู
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0.9, 0, 0, 34)
 closeBtn.Position = UDim2.new(0.05, 0, 0.92, 0)
-closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-closeBtn.BackgroundTransparency = 0.3
-closeBtn.Text = "❌ ซ่อนเมนู"
-closeBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-closeBtn.Font = Enum.Font.Gotham
+closeBtn.BackgroundColor3 = COLOR_BG_LIGHT
+closeBtn.BackgroundTransparency = 0.15
+closeBtn.Text = "ซ่อนเมนู"
+closeBtn.TextColor3 = COLOR_TEXT
+closeBtn.Font = Enum.Font.GothamMedium
 closeBtn.TextSize = 13
 closeBtn.Parent = main
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 local cbs = Instance.new("UIStroke", closeBtn)
-cbs.Color = Color3.fromRGB(100, 100, 120); cbs.Thickness = 1; cbs.Transparency = 0.5
+cbs.Color = Color3.fromRGB(80, 80, 90); cbs.Thickness = 1; cbs.Transparency = 0.5
 
 -- ============================================
--- D-Pad บิน (iOS Glass)
+-- D-Pad บิน
 -- ============================================
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
 pad.Position = UDim2.new(1, -200, 0.5, -90)
-pad.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-pad.BackgroundTransparency = 0.4
+pad.BackgroundColor3 = COLOR_BG
+pad.BackgroundTransparency = 0.25
 pad.Visible = false
 pad.Parent = gui
 Instance.new("UICorner", pad).CornerRadius = UDim.new(1, 0)
 local ps = Instance.new("UIStroke", pad)
-ps.Color = Color3.fromRGB(0, 200, 255); ps.Thickness = 1; ps.Transparency = 0.6
+ps.Color = COLOR_BORDER; ps.Thickness = 1.5; ps.Transparency = 0.4
 
 local function mkPBtn(txt, pos)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(0, 50, 0, 50)
     b.Position = pos
-    b.BackgroundColor3 = Color3.fromRGB(0, 150, 220)
-    b.BackgroundTransparency = 0.2
+    b.BackgroundColor3 = Color3.fromRGB(80, 15, 15)
+    b.BackgroundTransparency = 0.1
     b.Text = txt
     b.TextColor3 = Color3.fromRGB(255, 255, 255)
     b.Font = Enum.Font.GothamBold
@@ -298,20 +290,20 @@ local function mkPBtn(txt, pos)
     b.Parent = pad
     Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
     local s = Instance.new("UIStroke", b)
-    s.Color = Color3.fromRGB(0, 220, 255); s.Thickness = 1; s.Transparency = 0.4
+    s.Color = COLOR_ACCENT; s.Thickness = 1; s.Transparency = 0.3
     return b
 end
 
-local bU = mkPBtn("⬆", UDim2.new(0.5, -25, 0, 5))
-local bD = mkPBtn("⬇", UDim2.new(0.5, -25, 1, -55))
-local bL = mkPBtn("⬅", UDim2.new(0, 5, 0.5, -25))
-local bR = mkPBtn("➡", UDim2.new(1, -55, 0.5, -25))
+local bU = mkPBtn("↑", UDim2.new(0.5, -25, 0, 5))
+local bD = mkPBtn("↓", UDim2.new(0.5, -25, 1, -55))
+local bL = mkPBtn("←", UDim2.new(0, 5, 0.5, -25))
+local bR = mkPBtn("→", UDim2.new(1, -55, 0.5, -25))
 local bF = mkPBtn("W", UDim2.new(0.5, -25, 0.5, -25))
 
 local function bind(b, key)
-    b.MouseButton1Down:Connect(function() dirs[key] = true; b.BackgroundColor3 = Color3.fromRGB(0, 220, 100) end)
-    b.MouseButton1Up:Connect(function() dirs[key] = false; b.BackgroundColor3 = Color3.fromRGB(0, 150, 220) end)
-    b.MouseLeave:Connect(function() dirs[key] = false; b.BackgroundColor3 = Color3.fromRGB(0, 150, 220) end)
+    b.MouseButton1Down:Connect(function() dirs[key] = true; b.BackgroundColor3 = COLOR_ACTIVE end)
+    b.MouseButton1Up:Connect(function() dirs[key] = false; b.BackgroundColor3 = Color3.fromRGB(80, 15, 15) end)
+    b.MouseLeave:Connect(function() dirs[key] = false; b.BackgroundColor3 = Color3.fromRGB(80, 15, 15) end)
 end
 bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F")
 
@@ -338,83 +330,85 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- ============================================
--- ปุ่มเช็คชื่อ (iOS Glass)
+-- ★ ปุ่มเช็คชื่อ (P - วงกลม)
 -- ============================================
 local checkBtn = Instance.new("TextButton")
-checkBtn.Size = UDim2.new(0, 90, 0, 55)
+checkBtn.Size = UDim2.new(0, 55, 0, 55)
 checkBtn.Position = UDim2.new(0, 20, 0, 165)
-checkBtn.BackgroundColor3 = Color3.fromRGB(130, 60, 200)
-checkBtn.BackgroundTransparency = 0.2
-checkBtn.Text = "เช็คชื่อ"
+checkBtn.BackgroundColor3 = Color3.fromRGB(80, 15, 15)
+checkBtn.BackgroundTransparency = 0.1
+checkBtn.Text = "P"
 checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 checkBtn.Font = Enum.Font.GothamBold
-checkBtn.TextSize = 14
+checkBtn.TextSize = 22
 checkBtn.Active = true
 checkBtn.Draggable = true
 checkBtn.Parent = gui
-Instance.new("UICorner", checkBtn).CornerRadius = UDim.new(0, 16)
+Instance.new("UICorner", checkBtn).CornerRadius = UDim.new(1, 0)
 local cs = Instance.new("UIStroke", checkBtn)
-cs.Color = Color3.fromRGB(200, 150, 255); cs.Thickness = 1; cs.Transparency = 0.3
+cs.Color = COLOR_ACCENT; cs.Thickness = 1.5; cs.Transparency = 0.2
 
 -- ============================================
--- เมนูเช็คชื่อ (iOS Glass)
+-- เมนูเช็คชื่อ
 -- ============================================
 local checkMenu = Instance.new("Frame")
-checkMenu.Size = UDim2.new(0, 270, 0, 400)
-checkMenu.Position = UDim2.new(0.5, -135, 0.5, -200)
-checkMenu.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-checkMenu.BackgroundTransparency = 0.25
+checkMenu.Size = UDim2.new(0, 280, 0, 410)
+checkMenu.Position = UDim2.new(0.5, -140, 0.5, -205)
+checkMenu.BackgroundColor3 = COLOR_BG
+checkMenu.BackgroundTransparency = 0.1
 checkMenu.Active = true
 checkMenu.Draggable = true
 checkMenu.Visible = false
 checkMenu.Parent = gui
-Instance.new("UICorner", checkMenu).CornerRadius = UDim.new(0, 24)
+Instance.new("UICorner", checkMenu).CornerRadius = UDim.new(0, 18)
 local cms = Instance.new("UIStroke", checkMenu)
-cms.Color = Color3.fromRGB(150, 80, 255); cms.Thickness = 1.2; cms.Transparency = 0.5
+cms.Color = COLOR_BORDER; cms.Thickness = 1.5; cms.Transparency = 0.3
+
+local cTopLine = Instance.new("Frame")
+cTopLine.Size = UDim2.new(1, -30, 0, 2)
+cTopLine.Position = UDim2.new(0, 15, 0, 0)
+cTopLine.BackgroundColor3 = COLOR_ACCENT
+cTopLine.BorderSizePixel = 0
+cTopLine.Parent = checkMenu
+Instance.new("UICorner", cTopLine).CornerRadius = UDim.new(1, 0)
 
 local cTitle = Instance.new("TextLabel")
-cTitle.Size = UDim2.new(1, -20, 0, 40)
-cTitle.Position = UDim2.new(0, 10, 0, 10)
-cTitle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-cTitle.BackgroundTransparency = 0.6
-cTitle.Text = "By Boomxico"
-cTitle.TextColor3 = Color3.fromRGB(200, 150, 255)
+cTitle.Size = UDim2.new(1, -20, 0, 42)
+cTitle.Position = UDim2.new(0, 10, 0, 12)
+cTitle.BackgroundTransparency = 1
+cTitle.Text = "BY BOOMXICO"
+cTitle.TextColor3 = COLOR_ACCENT
 cTitle.Font = Enum.Font.GothamBold
 cTitle.TextSize = 16
 cTitle.Parent = checkMenu
-Instance.new("UICorner", cTitle).CornerRadius = UDim.new(0, 14)
 
-local cTitleGrad = Instance.new("UIGradient")
-cTitleGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(150, 80, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 200, 255))
-})
-cTitleGrad.Parent = cTitle
-
+-- ปุ่มปิดส่องกล้อง (ปุ่มเดียว)
 local stopSpecBtn = Instance.new("TextButton")
-stopSpecBtn.Size = UDim2.new(0.9, 0, 0, 32)
-stopSpecBtn.Position = UDim2.new(0.05, 0, 0, 56)
-stopSpecBtn.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
-stopSpecBtn.BackgroundTransparency = 0.15
-stopSpecBtn.Text = "❌ ปิดส่องกล้อง"
+stopSpecBtn.Size = UDim2.new(0.9, 0, 0, 34)
+stopSpecBtn.Position = UDim2.new(0.05, 0, 0, 60)
+stopSpecBtn.BackgroundColor3 = Color3.fromRGB(140, 15, 15)
+stopSpecBtn.BackgroundTransparency = 0.1
+stopSpecBtn.Text = "ปิดส่องกล้อง"
 stopSpecBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 stopSpecBtn.Font = Enum.Font.GothamBold
 stopSpecBtn.TextSize = 13
 stopSpecBtn.Parent = checkMenu
-Instance.new("UICorner", stopSpecBtn).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", stopSpecBtn).CornerRadius = UDim.new(0, 10)
+local sss = Instance.new("UIStroke", stopSpecBtn)
+sss.Color = COLOR_ACCENT; sss.Thickness = 1; sss.Transparency = 0.2
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(0.9, 0, 0, 270)
-scroll.Position = UDim2.new(0.05, 0, 0, 96)
-scroll.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-scroll.BackgroundTransparency = 0.4
+scroll.Size = UDim2.new(0.9, 0, 0, 250)
+scroll.Position = UDim2.new(0.05, 0, 0, 102)
+scroll.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+scroll.BackgroundTransparency = 0.2
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 4
-scroll.ScrollBarImageColor3 = Color3.fromRGB(0, 200, 255)
+scroll.ScrollBarImageColor3 = COLOR_ACCENT
 scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scroll.Parent = checkMenu
-Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 12)
 
 local listLayout = Instance.new("UIListLayout")
 listLayout.Padding = UDim.new(0, 4)
@@ -428,16 +422,18 @@ listPad.PaddingRight = UDim.new(0, 6)
 listPad.Parent = scroll
 
 local cCloseBtn = Instance.new("TextButton")
-cCloseBtn.Size = UDim2.new(0.9, 0, 0, 32)
+cCloseBtn.Size = UDim2.new(0.9, 0, 0, 34)
 cCloseBtn.Position = UDim2.new(0.05, 0, 1, -42)
-cCloseBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-cCloseBtn.BackgroundTransparency = 0.3
-cCloseBtn.Text = "ปิดเมนู"
-cCloseBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-cCloseBtn.Font = Enum.Font.Gotham
+cCloseBtn.BackgroundColor3 = COLOR_BG_LIGHT
+cCloseBtn.BackgroundTransparency = 0.15
+cCloseBtn.Text = "ซ่อนเมนู"
+cCloseBtn.TextColor3 = COLOR_TEXT
+cCloseBtn.Font = Enum.Font.GothamMedium
 cCloseBtn.TextSize = 13
 cCloseBtn.Parent = checkMenu
-Instance.new("UICorner", cCloseBtn).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", cCloseBtn).CornerRadius = UDim.new(0, 10)
+local ccs = Instance.new("UIStroke", cCloseBtn)
+ccs.Color = Color3.fromRGB(80, 80, 90); ccs.Thickness = 1; ccs.Transparency = 0.5
 
 -- ============================================
 -- Helper
@@ -456,12 +452,12 @@ local function clamp(v, minV, maxV)
 end
 
 -- ============================================
--- ปุ่มพับเมนู
+-- ปุ่มพับเมนูหลัก
 -- ============================================
 toggleBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
     main.Visible = isOpen
-    toggleBtn.BackgroundColor3 = isOpen and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(50, 30, 0)
+    toggleBtn.BackgroundColor3 = isOpen and COLOR_BG or Color3.fromRGB(80, 15, 15)
 end)
 
 -- ============================================
@@ -508,8 +504,8 @@ end
 spdBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     speedEnabled = not speedEnabled
-    spdBtn.Text = speedEnabled and "🏃 วิ่งไว: เปิด" or "🏃 วิ่งไว: ปิด"
-    spdBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(0, 150, 100) or Color3.fromRGB(30, 30, 40)
+    spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
+    spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
     if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
 end)
 
@@ -582,8 +578,8 @@ end
 flyBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     flyEnabled = not flyEnabled
-    flyBtn.Text = flyEnabled and "✈️ บินได้: เปิด" or "✈️ บินได้: ปิด"
-    flyBtn.BackgroundColor3 = flyEnabled and Color3.fromRGB(0, 150, 100) or Color3.fromRGB(30, 30, 40)
+    flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
+    flyBtn.BackgroundColor3 = flyEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
     if flyEnabled then startFly() else stopFly() end
 end)
 
@@ -636,7 +632,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ============================================
--- มองทะลุ
+-- มองทะลุ (ESP)
 -- ============================================
 local function clearESP()
     for _, obj in pairs(espObjects) do if obj then obj:Destroy() end end
@@ -668,13 +664,13 @@ end
 espBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     espEnabled = not espEnabled
-    espBtn.Text = espEnabled and "👁️ มองทะลุ: เปิด" or "👁️ มองทะลุ: ปิด"
-    espBtn.BackgroundColor3 = espEnabled and Color3.fromRGB(0, 150, 100) or Color3.fromRGB(30, 30, 40)
+    espBtn.Text = espEnabled and "มองทะลุ: เปิด" or "มองทะลุ: ปิด"
+    espBtn.BackgroundColor3 = espEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
     refreshESP()
 end)
 
 -- ============================================
--- เห็นชื่อ
+-- เห็นชื่อ (ขาวสว่าง)
 -- ============================================
 local function clearNames()
     for _, obj in pairs(nameObjects) do if obj then obj:Destroy() end end
@@ -701,7 +697,7 @@ local function applyName(char, pName)
     lbl.Size = UDim2.new(1, 0, 1, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = pName or "?"
-    lbl.TextColor3 = Color3.fromRGB(255, 255, 0)
+    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)   -- ★ ขาวสว่าง
     lbl.TextStrokeTransparency = 0
     lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     lbl.Font = Enum.Font.GothamBold
@@ -726,8 +722,8 @@ end
 nameBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     nameEnabled = not nameEnabled
-    nameBtn.Text = nameEnabled and "📝 เห็นชื่อ: เปิด" or "📝 เห็นชื่อ: ปิด"
-    nameBtn.BackgroundColor3 = nameEnabled and Color3.fromRGB(0, 150, 100) or Color3.fromRGB(30, 30, 40)
+    nameBtn.Text = nameEnabled and "เห็นชื่อ: เปิด" or "เห็นชื่อ: ปิด"
+    nameBtn.BackgroundColor3 = nameEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
     refreshNames()
 end)
 
@@ -814,6 +810,25 @@ local function spectatePlayer(targetPlayer)
     spectateDist = 12
 end
 
+-- ★ ฟังก์ชัน TP ไปหาผู้เล่น
+local function teleportToPlayer(targetPlayer)
+    if not targetPlayer then return end
+    local targetChar = targetPlayer.Character
+    if not targetChar then
+        local ok = pcall(function()
+            targetChar = targetPlayer.CharacterAdded:Wait()
+        end)
+        if not ok or not targetChar then return end
+    end
+    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+    if not targetRoot then return end
+    if not rootPart or not rootPart.Parent then return end
+
+    local offset = targetRoot.CFrame.LookVector * -5
+    local newPos = targetRoot.Position + offset + Vector3.new(0, 2, 0)
+    rootPart.CFrame = CFrame.new(newPos, targetRoot.Position)
+end
+
 RunService:BindToRenderStep("BoomSpectate", Enum.RenderPriority.Camera.Value + 1, function(dt)
     if not scriptAlive then return end
     if not spectateEnabled or not spectateTarget then return end
@@ -885,7 +900,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- ============================================
--- รายชื่อผู้เล่น
+-- รายชื่อผู้เล่น (รูป + DisplayName + @username + TP + ส่อง)
 -- ============================================
 local function refreshPlayerList()
     for _, data in pairs(playerRows) do
@@ -899,45 +914,111 @@ local function refreshPlayerList()
     for _, p in pairs(players) do
         if p ~= player then
             local row = Instance.new("Frame")
-            row.Size = UDim2.new(1, -8, 0, 38)
-            row.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-            row.BackgroundTransparency = 0.3
+            row.Size = UDim2.new(1, -8, 0, 44)
+            row.BackgroundColor3 = COLOR_BG_LIGHT
+            row.BackgroundTransparency = 0.2
             row.BorderSizePixel = 0
             row.Parent = scroll
-            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
+            -- ★ รูปโปรไฟล์
+            local avatar = Instance.new("ImageLabel")
+            avatar.Size = UDim2.new(0, 30, 0, 30)
+            avatar.Position = UDim2.new(0.02, 0, 0.5, -15)
+            avatar.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+            avatar.BorderSizePixel = 0
+            avatar.Image = ""
+            avatar.Parent = row
+            Instance.new("UICorner", avatar).CornerRadius = UDim.new(1, 0)
+            local avStroke = Instance.new("UIStroke", avatar)
+            avStroke.Color = COLOR_ACCENT
+            avStroke.Thickness = 1
+            avStroke.Transparency = 0.3
+
+            -- ดึงรูปโปรไฟล์ async
+            task.spawn(function()
+                local ok, thumb = pcall(function()
+                    return Players:GetUserThumbnailAsync(
+                        p.UserId,
+                        Enum.ThumbnailType.HeadShot,
+                        Enum.ThumbnailSize.Size100x100
+                    )
+                end)
+                if ok and thumb and avatar and avatar.Parent then
+                    avatar.Image = thumb
+                end
+            end)
+
+            -- DisplayName (บรรทัดบน)
             local nameLbl = Instance.new("TextLabel")
-            nameLbl.Size = UDim2.new(0.6, 0, 1, 0)
-            nameLbl.Position = UDim2.new(0.02, 0, 0, 0)
+            nameLbl.Size = UDim2.new(0.42, 0, 0.5, 0)
+            nameLbl.Position = UDim2.new(0.14, 0, 0.05, 0)
             nameLbl.BackgroundTransparency = 1
-            nameLbl.Text = p.Name
-            nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-            nameLbl.Font = Enum.Font.Gotham
-            nameLbl.TextSize = 13
+            nameLbl.Text = p.DisplayName
+            nameLbl.TextColor3 = COLOR_TEXT
+            nameLbl.Font = Enum.Font.GothamMedium
+            nameLbl.TextSize = 12
             nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+            nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
             nameLbl.Parent = row
 
+            -- @Username (บรรทัดล่าง)
+            local userLbl = Instance.new("TextLabel")
+            userLbl.Size = UDim2.new(0.42, 0, 0.4, 0)
+            userLbl.Position = UDim2.new(0.14, 0, 0.52, 0)
+            userLbl.BackgroundTransparency = 1
+            userLbl.Text = "@" .. p.Name
+            userLbl.TextColor3 = Color3.fromRGB(140, 140, 150)
+            userLbl.Font = Enum.Font.Gotham
+            userLbl.TextSize = 10
+            userLbl.TextXAlignment = Enum.TextXAlignment.Left
+            userLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            userLbl.Parent = row
+
+            -- ระยะ
             local distLbl = Instance.new("TextLabel")
-            distLbl.Size = UDim2.new(0.25, 0, 1, 0)
-            distLbl.Position = UDim2.new(0.6, 0, 0, 0)
+            distLbl.Size = UDim2.new(0.13, 0, 1, 0)
+            distLbl.Position = UDim2.new(0.57, 0, 0, 0)
             distLbl.BackgroundTransparency = 1
             distLbl.Text = "-"
-            distLbl.TextColor3 = Color3.fromRGB(0, 200, 255)
+            distLbl.TextColor3 = COLOR_ACCENT
             distLbl.Font = Enum.Font.GothamBold
-            distLbl.TextSize = 11
+            distLbl.TextSize = 10
             distLbl.Parent = row
 
+            -- ปุ่ม TP
+            local tpBtn = Instance.new("TextButton")
+            tpBtn.Size = UDim2.new(0.13, 0, 0, 28)
+            tpBtn.Position = UDim2.new(0.71, 0, 0.5, -14)
+            tpBtn.BackgroundColor3 = Color3.fromRGB(140, 15, 15)
+            tpBtn.BackgroundTransparency = 0.1
+            tpBtn.Text = "TP"
+            tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            tpBtn.Font = Enum.Font.GothamBold
+            tpBtn.TextSize = 12
+            tpBtn.Parent = row
+            Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 8)
+            local tps = Instance.new("UIStroke", tpBtn)
+            tps.Color = COLOR_ACCENT; tps.Thickness = 1; tps.Transparency = 0.3
+
+            tpBtn.MouseButton1Click:Connect(function()
+                teleportToPlayer(p)
+            end)
+
+            -- ปุ่ม ส่อง
             local specBtn = Instance.new("TextButton")
             specBtn.Size = UDim2.new(0.13, 0, 0, 28)
-            specBtn.Position = UDim2.new(0.86, 0, 0, 5)
-            specBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
-            specBtn.BackgroundTransparency = 0.15
+            specBtn.Position = UDim2.new(0.85, 0, 0.5, -14)
+            specBtn.BackgroundColor3 = Color3.fromRGB(80, 15, 15)
+            specBtn.BackgroundTransparency = 0.1
             specBtn.Text = "ส่อง"
             specBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
             specBtn.Font = Enum.Font.GothamBold
             specBtn.TextSize = 12
             specBtn.Parent = row
             Instance.new("UICorner", specBtn).CornerRadius = UDim.new(0, 8)
+            local sps = Instance.new("UIStroke", specBtn)
+            sps.Color = COLOR_ACCENT; sps.Thickness = 1; sps.Transparency = 0.3
 
             specBtn.MouseButton1Click:Connect(function()
                 spectatePlayer(p)
@@ -980,6 +1061,7 @@ task.spawn(function()
     end
 end)
 
+-- ★ เปิด/ปิดเมนูเช็คชื่อ (ไม่ปิด spectate)
 checkBtn.MouseButton1Click:Connect(function()
     checkMenu.Visible = not checkMenu.Visible
     if checkMenu.Visible then
@@ -987,11 +1069,12 @@ checkBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- ★ ปุ่มซ่อนเมนู — แค่ซ่อน ไม่ปิด spectate
 cCloseBtn.MouseButton1Click:Connect(function()
     checkMenu.Visible = false
-    stopSpectate()
 end)
 
+-- ★ ปุ่มปิดส่องกล้อง — อันเดียวที่ปิด spectate
 stopSpecBtn.MouseButton1Click:Connect(stopSpectate)
 
 Players.PlayerAdded:Connect(function()
@@ -1041,7 +1124,6 @@ local function killScript()
         humanoid.JumpPower = 50
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
-    if blur then blur:Destroy() end
     if gui then gui:Destroy() end
 end
 
@@ -1050,7 +1132,7 @@ killBtn.MouseButton1Click:Connect(killScript)
 closeBtn.MouseButton1Click:Connect(function()
     main.Visible = false
     isOpen = false
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 30, 0)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(80, 15, 15)
 end)
 
 player.CharacterAdded:Connect(function(nc)
@@ -1066,8 +1148,8 @@ player.CharacterAdded:Connect(function(nc)
     runAnimTrack = nil
 
     speedEnabled, flyEnabled = false, false
-    spdBtn.Text = "🏃 วิ่งไว: ปิด"; spdBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    flyBtn.Text = "✈️ บินได้: ปิด"; flyBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    spdBtn.Text = "วิ่งไว: ปิด"; spdBtn.BackgroundColor3 = COLOR_BG_LIGHT
+    flyBtn.Text = "บินได้: ปิด"; flyBtn.BackgroundColor3 = COLOR_BG_LIGHT
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
     pad.Visible = false
@@ -1077,4 +1159,4 @@ player.CharacterAdded:Connect(function(nc)
     refreshESP(); refreshNames()
 end)
 
-print("Boom script loaded OK | By Boomxico | iOS Glass UI | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
+print("Boom script loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
