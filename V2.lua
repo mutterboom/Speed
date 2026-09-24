@@ -1,6 +1,6 @@
 -- ============================================
--- By Boomxico | วิ่งไว + บินได้ (PC/Mobile) + มองทะลุ + เห็นชื่อ
--- + เมนูเช็คชื่อ/ส่องกล้อง (Scriptable Camera)
+-- By Boomxico | วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ
+-- + เมนูเช็คชื่อ/ส่องกล้อง + Anti-Detect
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -43,6 +43,7 @@ local lastMouseX = 0
 local lastMouseY = 0
 local mouseDown = false
 
+-- Anti-Detect (ชุดเดิม)
 local MAX_SPEED = 200
 local MAX_FLY = 300
 local lastToggleTime = 0
@@ -177,7 +178,7 @@ closeBtn.Parent = main
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 17)
 
 -- ============================================
--- D-Pad บิน (มือถือ)
+-- D-Pad บิน
 -- ============================================
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
@@ -388,7 +389,7 @@ local function getGameRunTrack()
 end
 
 -- ============================================
--- วิ่งไว
+-- วิ่งไว (มี Jitter + Clamp)
 -- ============================================
 spdBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
@@ -413,7 +414,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ============================================
--- บิน
+-- บิน (มี Jitter + Clamp)
 -- ============================================
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
