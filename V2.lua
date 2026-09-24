@@ -1,6 +1,6 @@
 -- ============================================
--- By boom | วิ่งไว + บินได้ (หันตามกล้อง) + มองทะลุ + เห็นชื่อทะลุกำแพง
--- + Anti-Detection Layer + ปุ่มปิดสคริปต์ + ปรับระยะชื่อใน UI
+-- By boom | วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ
+-- + เมนูเช็คชื่อ/ส่องกล้องแบบนั่งมองจากมุมเขา (แยกเมนู)
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -16,8 +16,14 @@ local speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, f
 local runSpeed, flySpeed = 50, 50
 local bodyVel, bodyGyro
 local isOpen = true
-local flyUp, flyDown = false, false
 local scriptAlive = true
+
+-- D-Pad ทิศทางบิน
+local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
+
+-- ระบบส่องกล้อง
+local spectateTarget = nil
+local spectateEnabled = false
 
 -- Anti-detect
 local MAX_SPEED = 200
@@ -28,8 +34,9 @@ local NAME_MAX_DIST = 800
 
 local espObjects, nameObjects = {}, {}
 local nameData = {}
+local playerRows = {}
 
--- ============ UI ============
+-- ============ UI หลัก ============
 local gui = Instance.new("ScreenGui")
 gui.Name = "ByBoomMenu"
 gui.ResetOnSpawn = false
@@ -150,44 +157,280 @@ closeBtn.TextSize = 14
 closeBtn.Parent = main
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 17)
 
--- ปุ่มขึ้น/ลง
-local upBtn = Instance.new("TextButton")
-upBtn.Size = UDim2.new(0, 55, 0, 55)
-upBtn.Position = UDim2.new(1, -80, 0.5, -70)
-upBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-upBtn.Text = "⬆"
-upBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-upBtn.Font = Enum.Font.SourceSansBold
-upBtn.TextSize = 24
-upBtn.Visible = false
-upBtn.Parent = gui
-Instance.new("UICorner", upBtn).CornerRadius = UDim.new(1, 0)
+-- ============ D-Pad บิน ============
+local pad = Instance.new("Frame")
+pad.Size = UDim2.new(0, 180, 0, 180)
+pad.Position = UDim2.new(1, -200, 0.5, -90)
+pad.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+pad.BackgroundTransparency = 0.3
+pad.Visible = false
+pad.Parent = gui
+Instance.new("UICorner", pad).CornerRadius = UDim.new(1, 0)
 
-local dnBtn = Instance.new("TextButton")
-dnBtn.Size = UDim2.new(0, 55, 0, 55)
-dnBtn.Position = UDim2.new(1, -80, 0.5, 10)
-dnBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-dnBtn.Text = "⬇"
-dnBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-dnBtn.Font = Enum.Font.SourceSansBold
-dnBtn.TextSize = 24
-dnBtn.Visible = false
-dnBtn.Parent = gui
-Instance.new("UICorner", dnBtn).CornerRadius = UDim.new(1, 0)
+local function mkPBtn(txt, pos)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 50, 0, 50)
+    b.Position = pos
+    b.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+    b.Text = txt
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.Font = Enum.Font.SourceSansBold
+    b.TextSize = 20
+    b.Parent = pad
+    Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+    return b
+end
 
-upBtn.MouseButton1Down:Connect(function() flyUp = true; upBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100) end)
-upBtn.MouseButton1Up:Connect(function() flyUp = false; upBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end)
-upBtn.MouseLeave:Connect(function() flyUp = false; upBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end)
+local bU = mkPBtn("⬆", UDim2.new(0.5, -25, 0, 5))
+local bD = mkPBtn("⬇", UDim2.new(0.5, -25, 1, -55))
+local bL = mkPBtn("⬅", UDim2.new(0, 5, 0.5, -25))
+local bR = mkPBtn("➡", UDim2.new(1, -55, 0.5, -25))
+local bF = mkPBtn("W", UDim2.new(0.5, -25, 0.5, -25))
 
-dnBtn.MouseButton1Down:Connect(function() flyDown = true; dnBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100) end)
-dnBtn.MouseButton1Up:Connect(function() flyDown = false; dnBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end)
-dnBtn.MouseLeave:Connect(function() flyDown = false; dnBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end)
+local function bind(b, key)
+    b.MouseButton1Down:Connect(function() dirs[key] = true; b.BackgroundColor3 = Color3.fromRGB(0, 200, 100) end)
+    b.MouseButton1Up:Connect(function() dirs[key] = false; b.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end)
+    b.MouseLeave:Connect(function() dirs[key] = false; b.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end)
+end
+bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F")
 
--- ============ ปุ่มพับ ============
-toggleBtn.MouseButton1Click:Connect(function()
-    isOpen = not isOpen
-    main.Visible = isOpen
-    toggleBtn.BackgroundColor3 = isOpen and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(200, 100, 0)
+-- ============ ปุ่มเปิดเมนู "เช็คชื่อ" ============
+local checkBtn = Instance.new("TextButton")
+checkBtn.Size = UDim2.new(0, 90, 0, 55)
+checkBtn.Position = UDim2.new(0, 20, 0, 165)
+checkBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 200)
+checkBtn.Text = "เช็คชื่อ"
+checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+checkBtn.Font = Enum.Font.SourceSansBold
+checkBtn.TextSize = 15
+checkBtn.Active = true
+checkBtn.Draggable = true
+checkBtn.Parent = gui
+Instance.new("UICorner", checkBtn).CornerRadius = UDim.new(0, 12)
+local cs = Instance.new("UIStroke", checkBtn)
+cs.Color = Color3.fromRGB(255, 255, 255); cs.Thickness = 2
+
+-- ============ เมนู "เช็คชื่อ" ============
+local checkMenu = Instance.new("Frame")
+checkMenu.Size = UDim2.new(0, 260, 0, 400)
+checkMenu.Position = UDim2.new(0.5, -130, 0.5, -200)
+checkMenu.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+checkMenu.Active = true
+checkMenu.Draggable = true
+checkMenu.Visible = false
+checkMenu.Parent = gui
+Instance.new("UICorner", checkMenu).CornerRadius = UDim.new(0, 16)
+local cms = Instance.new("UIStroke", checkMenu)
+cms.Color = Color3.fromRGB(150, 80, 200); cms.Thickness = 2
+
+local cTitle = Instance.new("TextLabel")
+cTitle.Size = UDim2.new(1, 0, 0, 38)
+cTitle.BackgroundColor3 = Color3.fromRGB(150, 80, 200)
+cTitle.Text = "เช็คชื่อในแมพ"
+cTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+cTitle.Font = Enum.Font.SourceSansBold
+cTitle.TextSize = 17
+cTitle.Parent = checkMenu
+Instance.new("UICorner", cTitle).CornerRadius = UDim.new(0, 16)
+
+local stopSpecBtn = Instance.new("TextButton")
+stopSpecBtn.Size = UDim2.new(0.9, 0, 0, 32)
+stopSpecBtn.Position = UDim2.new(0.05, 0, 0, 42)
+stopSpecBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+stopSpecBtn.Text = "ปิดส่องกล้อง"
+stopSpecBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+stopSpecBtn.Font = Enum.Font.SourceSansBold
+stopSpecBtn.TextSize = 14
+stopSpecBtn.Parent = checkMenu
+Instance.new("UICorner", stopSpecBtn).CornerRadius = UDim.new(0, 8)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(0.9, 0, 0, 280)
+scroll.Position = UDim2.new(0.05, 0, 0, 82)
+scroll.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 6
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.Parent = checkMenu
+Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 8)
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 4)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Parent = scroll
+
+local listPad = Instance.new("UIPadding")
+listPad.PaddingTop = UDim.new(0, 6)
+listPad.PaddingLeft = UDim.new(0, 6)
+listPad.PaddingRight = UDim.new(0, 6)
+listPad.Parent = scroll
+
+local cCloseBtn = Instance.new("TextButton")
+cCloseBtn.Size = UDim2.new(0.9, 0, 0, 32)
+cCloseBtn.Position = UDim2.new(0.05, 0, 1, -38)
+cCloseBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 100)
+cCloseBtn.Text = "ปิดเมนู"
+cCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+cCloseBtn.Font = Enum.Font.SourceSansBold
+cCloseBtn.TextSize = 14
+cCloseBtn.Parent = checkMenu
+Instance.new("UICorner", cCloseBtn).CornerRadius = UDim.new(0, 8)
+
+-- ============ ฟังก์ชันส่องกล้อง (นั่งมองจากมุมของเขา) ============
+local function stopSpectate()
+    spectateEnabled = false
+    spectateTarget = nil
+    local cam = workspace.CurrentCamera
+    if cam then
+        cam.CameraType = Enum.CameraType.Custom
+        if player.Character then
+            local myHum = player.Character:FindFirstChildOfClass("Humanoid")
+            if myHum then
+                cam.CameraSubject = myHum
+            end
+        end
+    end
+end
+
+local function spectatePlayer(targetPlayer)
+    if not targetPlayer then return end
+    local targetChar = targetPlayer.Character
+    if not targetChar then
+        local ok = pcall(function()
+            targetChar = targetPlayer.CharacterAdded:Wait()
+        end)
+        if not ok or not targetChar then return end
+    end
+    local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+    if not targetHum then return end
+
+    spectateEnabled = true
+    spectateTarget = targetPlayer
+
+    local cam = workspace.CurrentCamera
+    -- ★ ย้ายกล้องไปที่ตัวละครเป้าหมาย → เห็นภาพจากมุมของเขา
+    cam.CameraSubject = targetHum
+    cam.CameraType = Enum.CameraType.Custom
+end
+
+-- ============ สร้างรายชื่อผู้เล่น ============
+local function refreshPlayerList()
+    for _, row in pairs(playerRows) do
+        if row and row.row then row.row:Destroy() end
+    end
+    playerRows = {}
+
+    local players = Players:GetPlayers()
+    table.sort(players, function(a, b) return a.Name:lower() < b.Name:lower() end)
+
+    for _, p in pairs(players) do
+        if p ~= player then
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, -8, 0, 38)
+            row.BackgroundColor3 = Color3.fromRGB(55, 55, 75)
+            row.BorderSizePixel = 0
+            row.Parent = scroll
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+            local nameLbl = Instance.new("TextLabel")
+            nameLbl.Size = UDim2.new(0.6, 0, 1, 0)
+            nameLbl.Position = UDim2.new(0.02, 0, 0, 0)
+            nameLbl.BackgroundTransparency = 1
+            nameLbl.Text = p.Name
+            nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLbl.Font = Enum.Font.SourceSans
+            nameLbl.TextSize = 13
+            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+            nameLbl.Parent = row
+
+            local distLbl = Instance.new("TextLabel")
+            distLbl.Size = UDim2.new(0.25, 0, 1, 0)
+            distLbl.Position = UDim2.new(0.6, 0, 0, 0)
+            distLbl.BackgroundTransparency = 1
+            distLbl.Text = "-"
+            distLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+            distLbl.Font = Enum.Font.SourceSans
+            distLbl.TextSize = 11
+            distLbl.Parent = row
+
+            local specBtn = Instance.new("TextButton")
+            specBtn.Size = UDim2.new(0.13, 0, 0, 28)
+            specBtn.Position = UDim2.new(0.86, 0, 0, 5)
+            specBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+            specBtn.Text = "ส่อง"
+            specBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            specBtn.Font = Enum.Font.SourceSansBold
+            specBtn.TextSize = 12
+            specBtn.Parent = row
+            Instance.new("UICorner", specBtn).CornerRadius = UDim.new(0, 6)
+
+            specBtn.MouseButton1Click:Connect(function()
+                spectatePlayer(p)
+            end)
+
+            table.insert(playerRows, {row = row, player = p, distLbl = distLbl})
+        end
+    end
+end
+
+-- อัปเดตระยะทุก 0.5 วิ
+task.spawn(function()
+    while scriptAlive do
+        task.wait(0.5)
+        if checkMenu.Visible then
+            for _, data in pairs(playerRows) do
+                local p = data.player
+                local distLbl = data.distLbl
+                if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+                   and rootPart and rootPart.Parent then
+                    local d = (p.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+                    distLbl.Text = math.floor(d) .. "m"
+                else
+                    distLbl.Text = "-"
+                end
+            end
+        end
+    end
+end)
+
+-- ตรวจสอบเป้าหมายส่องกล้อง
+task.spawn(function()
+    while scriptAlive do
+        task.wait(0.5)
+        if spectateEnabled and spectateTarget then
+            if not spectateTarget.Parent
+               or not spectateTarget.Character
+               or not spectateTarget.Character:FindFirstChildOfClass("Humanoid") then
+                stopSpectate()
+            end
+        end
+    end
+end)
+
+-- ============ ปุ่มเปิด/ปิดเมนูเช็คชื่อ ============
+checkBtn.MouseButton1Click:Connect(function()
+    checkMenu.Visible = not checkMenu.Visible
+    if checkMenu.Visible then
+        refreshPlayerList()
+    end
+end)
+
+cCloseBtn.MouseButton1Click:Connect(function()
+    checkMenu.Visible = false
+    stopSpectate()
+end)
+
+stopSpecBtn.MouseButton1Click:Connect(stopSpectate)
+
+Players.PlayerAdded:Connect(function()
+    task.wait(0.5)
+    if checkMenu.Visible then refreshPlayerList() end
+end)
+Players.PlayerRemoving:Connect(function(p)
+    task.wait(0.3)
+    if spectateTarget == p then stopSpectate() end
+    if checkMenu.Visible then refreshPlayerList() end
 end)
 
 -- ============ Helper ============
@@ -203,6 +446,13 @@ local function clamp(v, minV, maxV)
     if v > maxV then return maxV end
     return v
 end
+
+-- ============ ปุ่มพับเมนูหลัก ============
+toggleBtn.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    main.Visible = isOpen
+    toggleBtn.BackgroundColor3 = isOpen and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(200, 100, 0)
+end)
 
 -- ============ วิ่งไว ============
 spdBtn.MouseButton1Click:Connect(function()
@@ -227,7 +477,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============ บิน (หันตามกล้อง) ============
+-- ============ บิน ============
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
@@ -249,8 +499,7 @@ local function startFly()
     humanoid.PlatformStand = false
     humanoid:ChangeState(Enum.HumanoidStateType.Running)
 
-    upBtn.Visible = true
-    dnBtn.Visible = true
+    pad.Visible = true
 end
 
 local function stopFly()
@@ -263,9 +512,8 @@ local function stopFly()
         humanoid.WalkSpeed = speedEnabled and runSpeed or 16
     end
 
-    upBtn.Visible = false
-    dnBtn.Visible = false
-    flyUp, flyDown = false, false
+    pad.Visible = false
+    for k in pairs(dirs) do dirs[k] = false end
 end
 
 flyBtn.MouseButton1Click:Connect(function()
@@ -297,18 +545,13 @@ RunService.RenderStepped:Connect(function()
 
         local cam = workspace.CurrentCamera
         local mv = Vector3.new(0, 0, 0)
-        local move = humanoid.MoveDirection
 
-        if move.Magnitude > 0 then
-            local camLook = cam.CFrame.LookVector
-            local camRight = cam.CFrame.RightVector
-            local flatLook = Vector3.new(camLook.X, 0, camLook.Z).Unit
-            local flatRight = Vector3.new(camRight.X, 0, camRight.Z).Unit
-            mv = (flatLook * move.Z + flatRight * move.X)
-        end
-
-        if flyUp then mv = mv + Vector3.new(0, 1, 0) end
-        if flyDown then mv = mv - Vector3.new(0, 1, 0) end
+        if dirs.F then mv = mv + cam.CFrame.LookVector end
+        if dirs.B then mv = mv - cam.CFrame.LookVector end
+        if dirs.L then mv = mv - cam.CFrame.RightVector end
+        if dirs.R then mv = mv + cam.CFrame.RightVector end
+        if dirs.U then mv = mv + Vector3.new(0, 1, 0) end
+        if dirs.D then mv = mv - Vector3.new(0, 1, 0) end
 
         local jitter = 1 + (math.random() - 0.5) * 0.03
         bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed * jitter) or Vector3.new(0, 0, 0)
@@ -450,76 +693,4 @@ RunService.RenderStepped:Connect(function()
             else
                 local screenPoint, onScreen = cam:WorldToViewportPoint(headPos)
                 if onScreen and screenPoint.Z > 0
-                   and screenPoint.X > -50 and screenPoint.X < viewport.X + 50
-                   and screenPoint.Y > -50 and screenPoint.Y < viewport.Y + 50 then
-                    bg.Enabled = true
-                else
-                    bg.Enabled = false
-                end
-            end
-        end
-    end
-end)
-
--- ============ ผู้เล่นเข้า/ออก ============
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function(c)
-        task.wait(0.5)
-        if not scriptAlive then return end
-        if espEnabled then applyESP(c) end
-        if nameEnabled then applyName(c, p.Name) end
-    end)
-end)
-Players.PlayerRemoving:Connect(function() refreshESP(); refreshNames() end)
-
-for _, p in pairs(Players:GetPlayers()) do
-    if p ~= player then
-        p.CharacterAdded:Connect(function(c)
-            task.wait(0.5)
-            if not scriptAlive then return end
-            if espEnabled then applyESP(c) end
-            if nameEnabled then applyName(c, p.Name) end
-        end)
-    end
-end
-
--- ============ ปุ่มปิดสคริปต์ทั้งหมด ============
-local function killScript()
-    scriptAlive = false
-    speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
-    stopFly()
-    clearESP()
-    clearNames()
-    if humanoid and humanoid.Parent == character then
-        humanoid.PlatformStand = false
-        humanoid.WalkSpeed = 16
-        humanoid.JumpPower = 50
-        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
-    if gui then gui:Destroy() end
-end
-
-killBtn.MouseButton1Click:Connect(killScript)
-
--- ============ ซ่อนเมนู ============
-closeBtn.MouseButton1Click:Connect(function()
-    main.Visible = false
-    isOpen = false
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
-end)
-
--- ============ เกิดใหม่ ============
-player.CharacterAdded:Connect(function(nc)
-    character = nc
-    humanoid = character:WaitForChild("Humanoid")
-    rootPart = character:WaitForChild("HumanoidRootPart")
-    speedEnabled, flyEnabled = false, false
-    spdBtn.Text = "วิ่งไว: ปิด"; spdBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    flyBtn.Text = "บินได้: ปิด"; flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    if bodyVel then bodyVel:Destroy(); bodyVel = nil end
-    if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
-    upBtn.Visible = false; dnBtn.Visible = false
-    task.wait(1)
-    if not scriptAlive then return end
-    refreshESP(); refreshNames()
-end)
+                   and screenPoint.X > -50 and screenPoint.X < viewport.X +
