@@ -1,339 +1,281 @@
 -- ============================================
--- สคริปต์: วิ่งไว + บินได้
--- By boom
--- สำหรับ mobile test TT
--- ปรับเฉพาะตัวละครที่เราเล่น (Local Player Only)
+-- By boom | วิ่งไว + บินได้ (มือถือ) | UI กลม + ปุ่มพับ
 -- ============================================
+if not game:IsLoaded() then game.Loaded:Wait() end
 
--- บริการที่จำเป็น
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
--- อ้างอิงเฉพาะตัวผู้เล่น local (ตัวเราเองเท่านั้น)
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- ตัวแปรสถานะ
-local speedEnabled = false
-local flyEnabled = false
-local flySpeed = 50
-local runSpeed = 50
-local bodyVelocity = nil
-local keysPressed = {}
+local speedEnabled, flyEnabled = false, false
+local runSpeed, flySpeed = 50, 50
+local linearVelocity, flyAttachment
+local isOpen = true
 
--- ============================================
--- 1. สร้าง UI ภาษาไทย
--- ============================================
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ByBoomMenu"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
 
--- หน้าต่างหลัก
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 260, 0, 260)
-mainFrame.Position = UDim2.new(0.5, -130, 0.5, -130)
-mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.Parent = screenGui
+-- ============ UI หลัก ============
+local gui = Instance.new("ScreenGui")
+gui.Name = "ByBoomMenu"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = mainFrame
+-- ปุ่มกลมเปิด/ปิด (มุมซ้ายบน)
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 55, 0, 55)
+toggleBtn.Position = UDim2.new(0, 20, 0, 100)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+toggleBtn.Text = "B"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 24
+toggleBtn.Active = true
+toggleBtn.Draggable = true
+toggleBtn.Parent = gui
 
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(0, 170, 255)
-stroke.Thickness = 2
-stroke.Parent = mainFrame
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(1, 0) -- กลม
+toggleCorner.Parent = toggleBtn
 
--- หัวข้อหลัก
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Color = Color3.fromRGB(255, 255, 255)
+toggleStroke.Thickness = 2
+toggleStroke.Parent = toggleBtn
+
+-- หน้าต่างเมนูหลัก (กลม)
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 240, 0, 210)
+main.Position = UDim2.new(0, 20, 0, 165)
+main.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 20) -- มุมโค้งกลม
+mainCorner.Parent = main
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(0, 170, 255)
+mainStroke.Thickness = 2
+mainStroke.Parent = main
+
+-- หัวข้อ
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 40)
+title.Size = UDim2.new(1, 0, 0, 38)
 title.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-title.Text = "เมนู Tricky | By boom"
+title.Text = "Tricky | By boom"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Font = Enum.Font.SourceSansBold
-title.TextSize = 20
-title.Parent = mainFrame
+title.TextSize = 17
+title.Parent = main
 
 local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 10)
+titleCorner.CornerRadius = UDim.new(0, 20)
 titleCorner.Parent = title
 
--- คำอธิบายย่อย
-local subTitle = Instance.new("TextLabel")
-subTitle.Size = UDim2.new(1, 0, 0, 22)
-subTitle.Position = UDim2.new(0, 0, 0, 40)
-subTitle.BackgroundTransparency = 1
-subTitle.Text = "ปรับเฉพาะตัวละครของเราเท่านั้น"
-subTitle.TextColor3 = Color3.fromRGB(180, 220, 255)
-subTitle.Font = Enum.Font.SourceSans
-subTitle.TextSize = 13
-subTitle.Parent = mainFrame
+-- ปุ่มวิ่งไว (กลม)
+local spdBtn = Instance.new("TextButton")
+spdBtn.Size = UDim2.new(0.55, 0, 0, 36)
+spdBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
+spdBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+spdBtn.Text = "วิ่งไว: ปิด"
+spdBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+spdBtn.Font = Enum.Font.SourceSans
+spdBtn.TextSize = 14
+spdBtn.Parent = main
+Instance.new("UICorner", spdBtn).CornerRadius = UDim.new(0, 18)
 
--- ปุ่มวิ่งไว
-local speedBtn = Instance.new("TextButton")
-speedBtn.Size = UDim2.new(0.55, 0, 0, 38)
-speedBtn.Position = UDim2.new(0.05, 0, 0.28, 0)
-speedBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-speedBtn.Text = "วิ่งไว: ปิด"
-speedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedBtn.Font = Enum.Font.SourceSans
-speedBtn.TextSize = 16
-speedBtn.Parent = mainFrame
+local spdBox = Instance.new("TextBox")
+spdBox.Size = UDim2.new(0.3, 0, 0, 36)
+spdBox.Position = UDim2.new(0.65, 0, 0.25, 0)
+spdBox.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+spdBox.Text = "50"
+spdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+spdBox.Font = Enum.Font.SourceSans
+spdBox.TextSize = 14
+spdBox.Parent = main
+Instance.new("UICorner", spdBox).CornerRadius = UDim.new(0, 18)
 
-local speedCorner = Instance.new("UICorner")
-speedCorner.CornerRadius = UDim.new(0, 6)
-speedCorner.Parent = speedBtn
-
--- ช่องกรอกความเร็ววิ่ง
-local speedBox = Instance.new("TextBox")
-speedBox.Size = UDim2.new(0.3, 0, 0, 38)
-speedBox.Position = UDim2.new(0.65, 0, 0.28, 0)
-speedBox.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-speedBox.Text = "50"
-speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedBox.Font = Enum.Font.SourceSans
-speedBox.TextSize = 16
-speedBox.PlaceholderText = "ความเร็ว"
-speedBox.Parent = mainFrame
-
-local speedBoxCorner = Instance.new("UICorner")
-speedBoxCorner.CornerRadius = UDim.new(0, 6)
-speedBoxCorner.Parent = speedBox
-
--- ปุ่มบินได้
+-- ปุ่มบิน (กลม)
 local flyBtn = Instance.new("TextButton")
-flyBtn.Size = UDim2.new(0.55, 0, 0, 38)
-flyBtn.Position = UDim2.new(0.05, 0, 0.48, 0)
+flyBtn.Size = UDim2.new(0.55, 0, 0, 36)
+flyBtn.Position = UDim2.new(0.05, 0, 0.47, 0)
 flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
 flyBtn.Text = "บินได้: ปิด"
 flyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 flyBtn.Font = Enum.Font.SourceSans
-flyBtn.TextSize = 16
-flyBtn.Parent = mainFrame
+flyBtn.TextSize = 14
+flyBtn.Parent = main
+Instance.new("UICorner", flyBtn).CornerRadius = UDim.new(0, 18)
 
-local flyCorner = Instance.new("UICorner")
-flyCorner.CornerRadius = UDim.new(0, 6)
-flyCorner.Parent = flyBtn
-
--- ช่องกรอกความเร็วบิน
 local flyBox = Instance.new("TextBox")
-flyBox.Size = UDim2.new(0.3, 0, 0, 38)
-flyBox.Position = UDim2.new(0.65, 0, 0.48, 0)
+flyBox.Size = UDim2.new(0.3, 0, 0, 36)
+flyBox.Position = UDim2.new(0.65, 0, 0.47, 0)
 flyBox.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
 flyBox.Text = "50"
 flyBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 flyBox.Font = Enum.Font.SourceSans
-flyBox.TextSize = 16
-flyBox.PlaceholderText = "ความเร็ว"
-flyBox.Parent = mainFrame
+flyBox.TextSize = 14
+flyBox.Parent = main
+Instance.new("UICorner", flyBox).CornerRadius = UDim.new(0, 18)
 
-local flyBoxCorner = Instance.new("UICorner")
-flyBoxCorner.CornerRadius = UDim.new(0, 6)
-flyBoxCorner.Parent = flyBox
-
--- คำแนะนำการใช้งาน
-local helpLabel = Instance.new("TextLabel")
-helpLabel.Size = UDim2.new(0.9, 0, 0, 40)
-helpLabel.Position = UDim2.new(0.05, 0, 0.68, 0)
-helpLabel.BackgroundTransparency = 1
-helpLabel.Text = "บิน: WASD เคลื่อนที่ | Space ขึ้น | Shift ลง"
-helpLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-helpLabel.Font = Enum.Font.SourceSans
-helpLabel.TextSize = 12
-helpLabel.TextWrapped = true
-helpLabel.Parent = mainFrame
-
--- ปุ่มปิดเมนู
+-- ปุ่มปิด (กลม)
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0.9, 0, 0, 36)
-closeBtn.Position = UDim2.new(0.05, 0, 0.88, 0)
+closeBtn.Size = UDim2.new(0.9, 0, 0, 34)
+closeBtn.Position = UDim2.new(0.05, 0, 0.72, 0)
 closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 closeBtn.Text = "ปิดเมนู"
 closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeBtn.Font = Enum.Font.SourceSansBold
-closeBtn.TextSize = 15
-closeBtn.Parent = mainFrame
+closeBtn.TextSize = 14
+closeBtn.Parent = main
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 17)
 
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 6)
-closeCorner.Parent = closeBtn
+-- ============ D-Pad บิน (กลม) ============
+local pad = Instance.new("Frame")
+pad.Size = UDim2.new(0, 180, 0, 180)
+pad.Position = UDim2.new(1, -200, 0.5, -90)
+pad.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+pad.BackgroundTransparency = 0.3
+pad.Visible = false
+pad.Parent = gui
+Instance.new("UICorner", pad).CornerRadius = UDim.new(1, 0)
 
--- ============================================
--- 2. ระบบวิ่งไว (เฉพาะตัวเรา)
--- ============================================
-local function updateSpeed()
-    -- ตรวจสอบให้แน่ใจว่า humanoid ยังเป็นของตัวเราเอง
-    if not humanoid or not humanoid.Parent then return end
-    if humanoid.Parent ~= character then return end
-
-    if speedEnabled then
-        local val = tonumber(speedBox.Text)
-        if val and val > 0 then
-            runSpeed = val
-            humanoid.WalkSpeed = runSpeed
-        else
-            speedBox.Text = "50"
-            runSpeed = 50
-            humanoid.WalkSpeed = 50
-        end
-    else
-        humanoid.WalkSpeed = 16 -- ค่าเริ่มต้นของ Roblox
-    end
+local function mkBtn(txt, pos)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 50, 0, 50)
+    b.Position = pos
+    b.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+    b.Text = txt
+    b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    b.Font = Enum.Font.SourceSansBold
+    b.TextSize = 20
+    b.Parent = pad
+    Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0) -- กลม
+    return b
 end
 
-speedBtn.MouseButton1Click:Connect(function()
+local bU = mkBtn("⬆", UDim2.new(0.5, -25, 0, 5))
+local bD = mkBtn("⬇", UDim2.new(0.5, -25, 1, -55))
+local bL = mkBtn("⬅", UDim2.new(0, 5, 0.5, -25))
+local bR = mkBtn("➡", UDim2.new(1, -55, 0.5, -25))
+local bF = mkBtn("W", UDim2.new(0.5, -25, 0.5, -25))
+local bB = mkBtn("S", UDim2.new(0.5, -25, 1, -55))
+bB:Destroy()
+bB = mkBtn("S", UDim2.new(0.5, -25, 1, -55))
+
+local function bind(b, key)
+    b.MouseButton1Down:Connect(function() dirs[key] = true; b.BackgroundColor3 = Color3.fromRGB(0, 200, 100) end)
+    b.MouseButton1Up:Connect(function() dirs[key] = false; b.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end)
+    b.MouseLeave:Connect(function() dirs[key] = false; b.BackgroundColor3 = Color3.fromRGB(0, 120, 200) end)
+end
+bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F") bind(bB,"B")
+
+-- ============ ปุ่มพับ ============
+toggleBtn.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    main.Visible = isOpen
+    toggleBtn.Text = isOpen and "B" or "B"
+    if isOpen then
+        -- เอียงปุ่มนิดหน่อยตอนเปิด
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+    else
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
+    end
+end)
+
+-- ============ วิ่งไว ============
+spdBtn.MouseButton1Click:Connect(function()
     speedEnabled = not speedEnabled
-    if speedEnabled then
-        speedBtn.Text = "วิ่งไว: เปิด"
-        speedBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-    else
-        speedBtn.Text = "วิ่งไว: ปิด"
-        speedBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    end
-    updateSpeed()
+    spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
+    spdBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(50, 50, 70)
+    if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
 end)
 
-speedBox.FocusLost:Connect(function()
-    updateSpeed()
+spdBox.FocusLost:Connect(function()
+    local v = tonumber(spdBox.Text)
+    if v and v > 0 then runSpeed = v else spdBox.Text = "50"; runSpeed = 50 end
 end)
 
--- ============================================
--- 3. ระบบบินได้ (เฉพาะตัวเรา)
--- ============================================
-local function startFly()
-    -- ตรวจสอบว่า rootPart เป็นของตัวเราเอง
-    if not rootPart or not rootPart.Parent then return end
-    if rootPart.Parent ~= character then return end
-
-    if bodyVelocity then bodyVelocity:Destroy() end
-    bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    bodyVelocity.Parent = rootPart
-    humanoid.PlatformStand = true
-end
-
-local function stopFly()
-    if bodyVelocity then
-        bodyVelocity:Destroy()
-        bodyVelocity = nil
+RunService.Heartbeat:Connect(function()
+    if speedEnabled and humanoid and humanoid.Parent == character then
+        humanoid.WalkSpeed = runSpeed
     end
-    if humanoid and humanoid.Parent == character then
-        humanoid.PlatformStand = false
-        humanoid.WalkSpeed = speedEnabled and runSpeed or 16
-    end
-end
+end)
 
+-- ============ บิน ============
 flyBtn.MouseButton1Click:Connect(function()
     flyEnabled = not flyEnabled
+    flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
+    flyBtn.BackgroundColor3 = flyEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(50, 50, 70)
+    
     if flyEnabled then
-        flyBtn.Text = "บินได้: เปิด"
-        flyBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-        startFly()
+        if linearVelocity then linearVelocity:Destroy() end
+        if flyAttachment then flyAttachment:Destroy() end
+        flyAttachment = Instance.new("Attachment", rootPart)
+        linearVelocity = Instance.new("LinearVelocity")
+        linearVelocity.Attachment0 = flyAttachment
+        linearVelocity.MaxForce = math.huge
+        linearVelocity.Velocity = Vector3.new(0, 0, 0)
+        linearVelocity.Parent = rootPart
+        humanoid.PlatformStand = true
+        pad.Visible = true
     else
-        flyBtn.Text = "บินได้: ปิด"
-        flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-        stopFly()
+        if linearVelocity then linearVelocity:Destroy(); linearVelocity = nil end
+        if flyAttachment then flyAttachment:Destroy(); flyAttachment = nil end
+        if humanoid and humanoid.Parent == character then
+            humanoid.PlatformStand = false
+            humanoid.WalkSpeed = speedEnabled and runSpeed or 16
+        end
+        pad.Visible = false
+        for k in pairs(dirs) do dirs[k] = false end
     end
 end)
 
 flyBox.FocusLost:Connect(function()
-    local val = tonumber(flyBox.Text)
-    if val and val > 0 then
-        flySpeed = val
-    else
-        flyBox.Text = "50"
-        flySpeed = 50
-    end
+    local v = tonumber(flyBox.Text)
+    if v and v > 0 then flySpeed = v else flyBox.Text = "50"; flySpeed = 50 end
 end)
 
--- ตรวจจับการกดปุ่ม
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        keysPressed[input.KeyCode] = true
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        keysPressed[input.KeyCode] = false
-    end
-end)
-
--- อัปเดตการบินทุกเฟรม
 RunService.RenderStepped:Connect(function()
-    -- ตรวจสอบว่าเป็นตัวละครของเราเองจริง
-    if not flyEnabled or not bodyVelocity then return end
-    if not rootPart or rootPart.Parent ~= character then return end
-
-    local camera = workspace.CurrentCamera
-    local moveDir = Vector3.new(0, 0, 0)
-
-    if keysPressed[Enum.KeyCode.W] then
-        moveDir = moveDir + camera.CFrame.LookVector
-    end
-    if keysPressed[Enum.KeyCode.S] then
-        moveDir = moveDir - camera.CFrame.LookVector
-    end
-    if keysPressed[Enum.KeyCode.A] then
-        moveDir = moveDir - camera.CFrame.RightVector
-    end
-    if keysPressed[Enum.KeyCode.D] then
-        moveDir = moveDir + camera.CFrame.RightVector
-    end
-    if keysPressed[Enum.KeyCode.Space] then
-        moveDir = moveDir + Vector3.new(0, 1, 0)
-    end
-    if keysPressed[Enum.KeyCode.LeftShift] then
-        moveDir = moveDir - Vector3.new(0, 1, 0)
-    end
-
-    if moveDir.Magnitude > 0 then
-        bodyVelocity.Velocity = moveDir.Unit * flySpeed
-    else
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    if flyEnabled and linearVelocity and rootPart.Parent == character then
+        local cam = workspace.CurrentCamera
+        local mv = Vector3.new(0, 0, 0)
+        if dirs.F then mv = mv + cam.CFrame.LookVector end
+        if dirs.B then mv = mv - cam.CFrame.LookVector end
+        if dirs.L then mv = mv - cam.CFrame.RightVector end
+        if dirs.R then mv = mv + cam.CFrame.RightVector end
+        if dirs.U then mv = mv + Vector3.new(0, 1, 0) end
+        if dirs.D then mv = mv - Vector3.new(0, 1, 0) end
+        linearVelocity.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed) or Vector3.new(0, 0, 0)
     end
 end)
 
--- ============================================
--- 4. ปุ่มปิดเมนู
--- ============================================
+-- ============ ปิดเมนู ============
 closeBtn.MouseButton1Click:Connect(function()
-    if flyEnabled then
-        flyEnabled = false
-        stopFly()
+    if linearVelocity then linearVelocity:Destroy() end
+    if flyAttachment then flyAttachment:Destroy() end
+    if humanoid and humanoid.Parent == character then
+        humanoid.PlatformStand = false
+        humanoid.WalkSpeed = 16
     end
-    if speedEnabled then
-        speedEnabled = false
-        if humanoid and humanoid.Parent == character then
-            humanoid.WalkSpeed = 16
-        end
-    end
-    screenGui:Destroy()
+    gui:Destroy()
 end)
 
--- ============================================
--- 5. รองรับการเกิดใหม่ของตัวละคร
--- ============================================
-player.CharacterAdded:Connect(function(newChar)
-    character = newChar
+-- ============ เกิดใหม่ ============
+player.CharacterAdded:Connect(function(nc)
+    character = nc
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
-
-    -- รีเซ็ตสถานะ
-    speedEnabled = false
-    flyEnabled = false
-    speedBtn.Text = "วิ่งไว: ปิด"
-    speedBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    flyBtn.Text = "บินได้: ปิด"
-    flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+    speedEnabled, flyEnabled = false, false
+    spdBtn.Text = "วิ่งไว: ปิด"; spdBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    flyBtn.Text = "บินได้: ปิด"; flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    if linearVelocity then linearVelocity:Destroy(); linearVelocity = nil end
+    if flyAttachment then flyAttachment:Destroy(); flyAttachment = nil end
+    pad.Visible = false
 end)
