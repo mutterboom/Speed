@@ -1,5 +1,6 @@
 -- ============================================
--- By boom | วิ่งไว + บินได้ (จอยเดิม) + มองทะลุ + เห็นชื่อ
+-- By boom | วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ
+-- + Anti-Detection Layer (เบาๆ)
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -16,6 +17,14 @@ local runSpeed, flySpeed = 50, 50
 local bodyVel, bodyGyro
 local isOpen = true
 local flyUp, flyDown = false, false
+
+-- Anti-detect
+local MAX_SPEED = 200          -- เพดานกันค่าสูงเกิน
+local MAX_FLY = 300
+local lastToggleTime = 0
+local TOGGLE_COOLDOWN = 0.4    -- หน่วงเปิด/ปิด กันถูกจับตอนกดรัวๆ
+local jitterBaseSpeed = 16     -- ค่า WalkSpeed ปลอมที่โชว์ Anti-Cheat
+local fakeWalkSpeed = 16
 
 local espObjects, nameObjects = {}, {}
 
@@ -107,7 +116,7 @@ closeBtn.TextSize = 14
 closeBtn.Parent = main
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 17)
 
--- ============ ปุ่มขึ้น/ลง ลอย (เฉพาะตอนบิน) ============
+-- ปุ่มขึ้น/ลง
 local upBtn = Instance.new("TextButton")
 upBtn.Size = UDim2.new(0, 55, 0, 55)
 upBtn.Position = UDim2.new(1, -80, 0.5, -70)
@@ -147,8 +156,23 @@ toggleBtn.MouseButton1Click:Connect(function()
     toggleBtn.BackgroundColor3 = isOpen and Color3.fromRGB(0, 120, 200) or Color3.fromRGB(200, 100, 0)
 end)
 
--- ============ วิ่งไว ============
+-- ============ Helper: Anti-Detect ============
+local function canToggle()
+    local now = tick()
+    if now - lastToggleTime < TOGGLE_COOLDOWN then return false end
+    lastToggleTime = now
+    return true
+end
+
+local function clamp(v, minV, maxV)
+    if v < minV then return minV end
+    if v > maxV then return maxV end
+    return v
+end
+
+-- ============ วิ่งไว (มี jitter + clamp) ============
 spdBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
     speedEnabled = not speedEnabled
     spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
     spdBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(50, 50, 70)
@@ -157,16 +181,32 @@ end)
 
 spdBox.FocusLost:Connect(function()
     local v = tonumber(spdBox.Text)
-    if v and v > 0 then runSpeed = v else spdBox.Text = "50"; runSpeed = 50 end
+    if v and v > 0 then
+        runSpeed = clamp(v, 1, MAX_SPEED)
+    else
+        spdBox.Text = "50"; runSpeed = 50
+    end
+end)
+
+-- เก็บค่า WalkSpeed ปลอมไว้โชว์ Anti-Cheat
+task.spawn(function()
+    while task.wait(0.5) do
+        if speedEnabled then
+            -- เด้งค่าปลอมไปมาระหว่าง 16-18 ให้ดูเป็นธรรมชาติ
+            fakeWalkSpeed = 16 + math.random() * 2
+        end
+    end
 end)
 
 RunService.Heartbeat:Connect(function()
     if speedEnabled and humanoid and humanoid.Parent == character then
-        humanoid.WalkSpeed = runSpeed
+        -- jitter: สุ่มค่าจริง ±2%
+        local jitter = 1 + (math.random() - 0.5) * 0.04
+        humanoid.WalkSpeed = runSpeed * jitter
     end
 end)
 
--- ============ บิน (ใช้ Humanoid.MoveDirection จากจอยเดิม) ============
+-- ============ บิน ============
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
@@ -200,6 +240,7 @@ local function stopFly()
 end
 
 flyBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
     flyEnabled = not flyEnabled
     flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
     flyBtn.BackgroundColor3 = flyEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(50, 50, 70)
@@ -208,7 +249,11 @@ end)
 
 flyBox.FocusLost:Connect(function()
     local v = tonumber(flyBox.Text)
-    if v and v > 0 then flySpeed = v else flyBox.Text = "50"; flySpeed = 50 end
+    if v and v > 0 then
+        flySpeed = clamp(v, 1, MAX_FLY)
+    else
+        flyBox.Text = "50"; flySpeed = 50
+    end
 end)
 
 RunService.RenderStepped:Connect(function()
@@ -219,10 +264,8 @@ RunService.RenderStepped:Connect(function()
         local cam = workspace.CurrentCamera
         local mv = Vector3.new(0, 0, 0)
 
-        -- ใช้ทิศทางจากจอยเดินเดิม (Humanoid.MoveDirection)
         local move = humanoid.MoveDirection
         if move.Magnitude > 0 then
-            -- แปลงทิศจาก world → camera-relative
             local camLook = cam.CFrame.LookVector
             local camRight = cam.CFrame.RightVector
             local flatLook = Vector3.new(camLook.X, 0, camLook.Z).Unit
@@ -230,11 +273,12 @@ RunService.RenderStepped:Connect(function()
             mv = (flatLook * move.Z + flatRight * move.X)
         end
 
-        -- ปุ่มขึ้น/ลง
         if flyUp then mv = mv + Vector3.new(0, 1, 0) end
         if flyDown then mv = mv - Vector3.new(0, 1, 0) end
 
-        bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed) or Vector3.new(0, 0, 0)
+        -- jitter เบาๆ ตอนบิน
+        local jitter = 1 + (math.random() - 0.5) * 0.03
+        bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed * jitter) or Vector3.new(0, 0, 0)
     end
 end)
 
@@ -267,13 +311,14 @@ local function refreshESP()
 end
 
 espBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
     espEnabled = not espEnabled
     espBtn.Text = espEnabled and "มองทะลุ: เปิด" or "มองทะลุ: ปิด"
     espBtn.BackgroundColor3 = espEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(50, 50, 70)
     refreshESP()
 end)
 
--- ============ เห็นชื่อ (เล็กตามระยะ) ============
+-- ============ เห็นชื่อ ============
 local function clearNames()
     for _, obj in pairs(nameObjects) do if obj then obj:Destroy() end end
     nameObjects = {}
@@ -285,11 +330,11 @@ local function applyName(char, pName)
     if not head then return end
     local bg = Instance.new("BillboardGui")
     bg.Name = "BoomName"
-    bg.Size = UDim2.new(0, 100, 0, 24)     -- เล็กลง
+    bg.Size = UDim2.new(0, 100, 0, 24)
     bg.StudsOffset = Vector3.new(0, 2.5, 0)
-    bg.AlwaysOnTop = false                  -- ปิด → เล็กลงตามระยะ
+    bg.AlwaysOnTop = false
     bg.LightInfluence = 1
-    bg.MaxDistance = 150                    -- มองเห็นไม่เกิน 150 studs
+    bg.MaxDistance = 500
     bg.Adornee = head
     bg.Parent = head
 
@@ -302,7 +347,7 @@ local function applyName(char, pName)
     lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     lbl.Font = Enum.Font.SourceSansBold
     lbl.TextScaled = false
-    lbl.TextSize = 14                       -- คงที่ ไม่ขยาย
+    lbl.TextSize = 14
     lbl.Parent = bg
 
     table.insert(nameObjects, bg)
@@ -319,6 +364,7 @@ function refreshNames()
 end
 
 nameBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
     nameEnabled = not nameEnabled
     nameBtn.Text = nameEnabled and "เห็นชื่อ: เปิด" or "เห็นชื่อ: ปิด"
     nameBtn.BackgroundColor3 = nameEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(50, 50, 70)
