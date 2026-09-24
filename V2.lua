@@ -1,6 +1,7 @@
 -- ============================================
--- By boom | วิ่งไว + บินได้ (D-Pad 6 ทิศ) + มองทะลุ + เห็นชื่อทะลุกำแพง
--- + Anti-Detection Layer + ปุ่มปิดสคริปต์ + ปรับระยะชื่อใน UI
+-- By boom | วิ่งไว + บินได้ (D-Pad 6 ทิศ + อนิเมชั่นวิ่ง) 
+-- + มองทะลุ + เห็นชื่อทะลุกำแพง + Anti-Detection
+-- + ปุ่มปิดสคริปต์ + ปรับระยะชื่อใน UI
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -20,6 +21,14 @@ local scriptAlive = true
 
 -- D-Pad ทิศทางบิน
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
+
+-- อนิเมชั่นวิ่ง
+local runAnimator = humanoid:FindFirstChildOfClass("Animator")
+if not runAnimator then
+    runAnimator = Instance.new("Animator")
+    runAnimator.Parent = humanoid
+end
+local runAnimTrack = nil
 
 -- Anti-detect
 local MAX_SPEED = 200
@@ -152,7 +161,7 @@ closeBtn.TextSize = 14
 closeBtn.Parent = main
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 17)
 
--- ============ D-Pad บิน 6 ทิศ ============
+-- ============ D-Pad บิน ============
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
 pad.Position = UDim2.new(1, -200, 0.5, -90)
@@ -210,6 +219,52 @@ local function clamp(v, minV, maxV)
     return v
 end
 
+-- ============ โหลดอนิเมชั่นวิ่งจากเกม ============
+local function loadRunAnimation()
+    if runAnimTrack then
+        runAnimTrack:Stop(0)
+        runAnimTrack = nil
+    end
+
+    -- หา Animate script ของเกม
+    local animateScript = character:FindFirstChild("Animate")
+    if not animateScript then
+        -- fallback ท่าวิ่งมาตรฐาน R15
+        local anim = Instance.new("Animation")
+        anim.AnimationId = "rbxassetid://507767714"
+        local ok, track = pcall(function() return runAnimator:LoadAnimation(anim) end)
+        if ok and track then
+            track.Priority = Enum.AnimationPriority.Action
+            track.Looped = true
+            runAnimTrack = track
+        end
+        return
+    end
+
+    -- ดึง AnimationId จาก Animate script
+    local runAnimId = nil
+    pcall(function()
+        local runNode = animateScript:FindFirstChild("run")
+        if runNode then
+            local r = runNode:FindFirstChild("RunAnim")
+            if r then runAnimId = r.AnimationId end
+        end
+    end)
+
+    if not runAnimId or runAnimId == "" then
+        runAnimId = "rbxassetid://507767714"
+    end
+
+    local anim = Instance.new("Animation")
+    anim.AnimationId = runAnimId
+    local ok, track = pcall(function() return runAnimator:LoadAnimation(anim) end)
+    if ok and track then
+        track.Priority = Enum.AnimationPriority.Action
+        track.Looped = true
+        runAnimTrack = track
+    end
+end
+
 -- ============ วิ่งไว ============
 spdBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
@@ -233,7 +288,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============ บิน (D-Pad 6 ทิศ) ============
+-- ============ บิน (D-Pad 6 ทิศ + อนิเมชั่น) ============
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
@@ -249,11 +304,17 @@ local function startFly()
     bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
     bodyGyro.P = 3000
     bodyGyro.D = 50
-    bodyGyro.CFrame = rootPart.CFrame
+    bodyGyro.CFrame = workspace.CurrentCamera.CFrame
     bodyGyro.Parent = rootPart
 
     humanoid.PlatformStand = false
     humanoid:ChangeState(Enum.HumanoidStateType.Running)
+
+    -- ★ โหลดและเล่นอนิเมชั่นวิ่ง
+    loadRunAnimation()
+    if runAnimTrack then
+        runAnimTrack:Play(0.1)
+    end
 
     pad.Visible = true
 end
@@ -261,6 +322,11 @@ end
 local function stopFly()
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
+
+    -- ★ หยุดอนิเมชั่น
+    if runAnimTrack then
+        runAnimTrack:Stop(0.1)
+    end
 
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
@@ -295,13 +361,16 @@ RunService.RenderStepped:Connect(function()
         end
         humanoid.PlatformStand = false
 
-        -- หันตัวตามกล้อง
+        -- ★ บังคับเล่นอนิเมชั่นซ้ำ กัน Roblox หยุด
+        if runAnimTrack and not runAnimTrack.IsPlaying then
+            runAnimTrack:Play(0.1)
+        end
+
         if bodyGyro then bodyGyro.CFrame = workspace.CurrentCamera.CFrame end
 
         local cam = workspace.CurrentCamera
         local mv = Vector3.new(0, 0, 0)
 
-        -- คำนวณทิศจาก D-Pad + กล้อง
         if dirs.F then mv = mv + cam.CFrame.LookVector end
         if dirs.B then mv = mv - cam.CFrame.LookVector end
         if dirs.L then mv = mv - cam.CFrame.RightVector end
@@ -512,6 +581,15 @@ player.CharacterAdded:Connect(function(nc)
     character = nc
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
+
+    -- รีเซ็ต Animator + Animation
+    runAnimator = humanoid:FindFirstChildOfClass("Animator")
+    if not runAnimator then
+        runAnimator = Instance.new("Animator")
+        runAnimator.Parent = humanoid
+    end
+    runAnimTrack = nil
+
     speedEnabled, flyEnabled = false, false
     spdBtn.Text = "วิ่งไว: ปิด"; spdBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
     flyBtn.Text = "บินได้: ปิด"; flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
