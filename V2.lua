@@ -1,6 +1,6 @@
 -- ============================================
--- By Boomxico | วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ
--- + เมนูเช็คชื่อ/ส่องกล้อง + Anti-Detection Safe
+-- By Boomxico | วิ่งไว + บินได้ (PC/Mobile) + มองทะลุ + เห็นชื่อ
+-- + เมนูเช็คชื่อ/ส่องกล้อง (Scriptable Camera)
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -24,14 +24,6 @@ local scriptAlive = true
 
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
 local pcKeys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
-
--- ★ Anti-Detection Safe (ไม่ทำลายสคริปต์)
-local antiDetect = {
-    jitterSeed = os.time() * 1000,
-    lastSpeedCheck = 0,
-    enforceWalkSpeed = true,
-    noTouchGround = false,
-}
 
 -- อนิเมชั่นวิ่ง
 local runAnimator = humanoid:FindFirstChildOfClass("Animator")
@@ -348,33 +340,6 @@ local function clamp(v, minV, maxV)
     return v
 end
 
--- ★ Anti-Detection: jitter แบบ noise (เนียนกว่า random)
-local function getNoiseJitter(base, amount)
-    antiDetect.jitterSeed = antiDetect.jitterSeed + 1
-    local r = math.noise(antiDetect.jitterSeed * 0.0001, tick() * 0.5) * 0.5 + 0.5
-    return base * (1 + (r - 0.5) * amount)
-end
-
--- ============================================
--- ★ Anti-Detection: Enforce WalkSpeed
--- (ไม่แตะ CoreGui, ไม่แตะ metatable — ปลอดภัย)
--- ============================================
-if isPC or isMobile then
-    -- ตรวจสอบและรีเซ็ต WalkSpeed ทุก 0.5 วิ ถ้าเกมพยายาม reset
-    task.spawn(function()
-        while scriptAlive do
-            task.wait(0.5)
-            if speedEnabled and humanoid and humanoid.Parent == character then
-                -- ถ้า WalkSpeed ถูก reset ให้ Anti-Cheat หรือเกม → set กลับ
-                if math.abs(humanoid.WalkSpeed - 16) < 0.5 and runSpeed > 20 then
-                    humanoid.WalkSpeed = runSpeed
-                    antiDetect.lastSpeedCheck = tick()
-                end
-            end
-        end
-    end)
-end
-
 -- ============================================
 -- ปุ่มพับเมนู
 -- ============================================
@@ -442,9 +407,8 @@ end)
 RunService.Heartbeat:Connect(function()
     if not scriptAlive then return end
     if speedEnabled and humanoid and humanoid.Parent == character then
-        -- ★ ใช้ noise jitter แทน random ธรรมดา
-        local finalSpeed = getNoiseJitter(runSpeed, 0.06)
-        humanoid.WalkSpeed = finalSpeed
+        local jitter = 1 + (math.random() - 0.5) * 0.04
+        humanoid.WalkSpeed = runSpeed * jitter
     end
 end)
 
@@ -551,9 +515,8 @@ RunService.RenderStepped:Connect(function()
             if pcKeys.Shift then mv = mv - Vector3.new(0, 1, 0) end
         end
 
-        -- ★ ใช้ noise jitter ตอนบินด้วย
-        local finalFly = getNoiseJitter(flySpeed, 0.05)
-        bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * finalFly) or Vector3.new(0, 0, 0)
+        local jitter = 1 + (math.random() - 0.5) * 0.03
+        bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed * jitter) or Vector3.new(0, 0, 0)
     end
 end)
 
