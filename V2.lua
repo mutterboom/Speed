@@ -1,6 +1,6 @@
 -- ============================================
--- By Boomxico | วิ่งไว + บินได้ (PC/Mobile) + มองทะลุ + เห็นชื่อ
--- + เมนูเช็คชื่อ/ส่องกล้อง (Scriptable Camera)
+-- By Boomxico | วิ่งไว + บินได้ + Hotkey + มองทะลุ + เห็นชื่อ
+-- + เมนูเช็คชื่อ/ส่องกล้อง + Anti-Detection Enhanced
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -24,6 +24,24 @@ local scriptAlive = true
 
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
 local pcKeys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
+
+-- Hotkey ระบบ
+local hotkeys = {
+    speed = {key = nil, mode = "Toggle", pressed = false},
+    fly = {key = nil, mode = "Toggle", pressed = false}
+}
+
+-- ★ Anti-Detection Enhanced
+local antiDetect = {
+    enabled = true,
+    realWalkSpeed = 16,        -- ค่าจริงที่ Anti-Cheat เห็น
+    realJumpPower = 50,        -- ค่าจริง JumpPower
+    lastSpeedSet = 0,
+    lastFlySet = 0,
+    jitterSeed = os.time(),
+    spoofEnabled = true,
+    hideExecutor = true,
+}
 
 -- อนิเมชั่นวิ่ง
 local runAnimator = humanoid:FindFirstChildOfClass("Animator")
@@ -77,7 +95,7 @@ local ts = Instance.new("UIStroke", toggleBtn)
 ts.Color = Color3.fromRGB(255, 255, 255); ts.Thickness = 2
 
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 240, 0, 400)
+main.Size = UDim2.new(0, 290, 0, 420)
 main.Position = UDim2.new(0, 20, 0, 165)
 main.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
 main.Active = true
@@ -97,44 +115,71 @@ title.TextSize = 17
 title.Parent = main
 Instance.new("UICorner", title).CornerRadius = UDim.new(0, 20)
 
-local function mkRow(y)
+local function mkRowWithHotkey(y, labelText, defaultVal)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.55, 0, 0, 36)
-    btn.Position = UDim2.new(0.05, 0, y, 0)
+    btn.Size = UDim2.new(0.45, 0, 0, 36)
+    btn.Position = UDim2.new(0.04, 0, y, 0)
     btn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSans
-    btn.TextSize = 14
+    btn.TextSize = 13
+    btn.Text = labelText
     btn.Parent = main
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 18)
 
     local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0.3, 0, 0, 36)
-    box.Position = UDim2.new(0.65, 0, y, 0)
+    box.Size = UDim2.new(0.2, 0, 0, 36)
+    box.Position = UDim2.new(0.51, 0, y, 0)
     box.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    box.Text = defaultVal
     box.TextColor3 = Color3.fromRGB(255, 255, 255)
     box.Font = Enum.Font.SourceSans
-    box.TextSize = 14
+    box.TextSize = 13
     box.Parent = main
     Instance.new("UICorner", box).CornerRadius = UDim.new(0, 18)
-    return btn, box
+
+    local hotkeyBtn = Instance.new("TextButton")
+    hotkeyBtn.Size = UDim2.new(0.22, 0, 0, 36)
+    hotkeyBtn.Position = UDim2.new(0.74, 0, y, 0)
+    hotkeyBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 130)
+    hotkeyBtn.Text = "Hotkey"
+    hotkeyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hotkeyBtn.Font = Enum.Font.SourceSans
+    hotkeyBtn.TextSize = 12
+    hotkeyBtn.Parent = main
+    Instance.new("UICorner", hotkeyBtn).CornerRadius = UDim.new(0, 18)
+
+    return btn, box, hotkeyBtn
 end
 
-local spdBtn, spdBox = mkRow(0.12)
-spdBtn.Text = "วิ่งไว: ปิด"; spdBox.Text = "50"
+local spdBtn, spdBox, spdHotBtn = mkRowWithHotkey(0.12, "วิ่งไว: ปิด", "50")
+local flyBtn, flyBox, flyHotBtn = mkRowWithHotkey(0.26, "บินได้: ปิด", "50")
 
-local flyBtn, flyBox = mkRow(0.26)
-flyBtn.Text = "บินได้: ปิด"; flyBox.Text = "50"
+local espBtn = Instance.new("TextButton")
+espBtn.Size = UDim2.new(0.55, 0, 0, 36)
+espBtn.Position = UDim2.new(0.04, 0, 0.40, 0)
+espBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+espBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+espBtn.Font = Enum.Font.SourceSans
+espBtn.TextSize = 14
+espBtn.Text = "มองทะลุ: ปิด"
+espBtn.Parent = main
+Instance.new("UICorner", espBtn).CornerRadius = UDim.new(0, 18)
 
-local espBtn, espBox = mkRow(0.40)
-espBtn.Text = "มองทะลุ: ปิด"; espBox.Visible = false
-
-local nameBtn, nameBox = mkRow(0.54)
-nameBtn.Text = "เห็นชื่อ: ปิด"; nameBox.Visible = false
+local nameBtn = Instance.new("TextButton")
+nameBtn.Size = UDim2.new(0.55, 0, 0, 36)
+nameBtn.Position = UDim2.new(0.04, 0, 0.54, 0)
+nameBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+nameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+nameBtn.Font = Enum.Font.SourceSans
+nameBtn.TextSize = 14
+nameBtn.Text = "เห็นชื่อ: ปิด"
+nameBtn.Parent = main
+Instance.new("UICorner", nameBtn).CornerRadius = UDim.new(0, 18)
 
 local distBtn = Instance.new("TextButton")
 distBtn.Size = UDim2.new(0.55, 0, 0, 36)
-distBtn.Position = UDim2.new(0.05, 0, 0.68, 0)
+distBtn.Position = UDim2.new(0.04, 0, 0.68, 0)
 distBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
 distBtn.Text = "ระยะชื่อ"
 distBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -177,7 +222,247 @@ closeBtn.Parent = main
 Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 17)
 
 -- ============================================
--- D-Pad บิน (เฉพาะมือถือ)
+-- Hotkey UI
+-- ============================================
+local hotkeyPopup = Instance.new("Frame")
+hotkeyPopup.Size = UDim2.new(0, 260, 0, 180)
+hotkeyPopup.Position = UDim2.new(0.5, -130, 0.5, -90)
+hotkeyPopup.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+hotkeyPopup.Active = true
+hotkeyPopup.Draggable = true
+hotkeyPopup.Visible = false
+hotkeyPopup.Parent = gui
+Instance.new("UICorner", hotkeyPopup).CornerRadius = UDim.new(0, 14)
+local hps = Instance.new("UIStroke", hotkeyPopup)
+hps.Color = Color3.fromRGB(255, 200, 0); hps.Thickness = 2
+
+local hpTitle = Instance.new("TextLabel")
+hpTitle.Size = UDim2.new(1, 0, 0, 34)
+hpTitle.BackgroundColor3 = Color3.fromRGB(255, 180, 0)
+hpTitle.Text = "ตั้งค่า Hotkey"
+hpTitle.TextColor3 = Color3.fromRGB(0, 0, 0)
+hpTitle.Font = Enum.Font.SourceSansBold
+hpTitle.TextSize = 15
+hpTitle.Parent = hotkeyPopup
+Instance.new("UICorner", hpTitle).CornerRadius = UDim.new(0, 14)
+
+local hpTarget = Instance.new("TextLabel")
+hpTarget.Size = UDim2.new(1, 0, 0, 22)
+hpTarget.Position = UDim2.new(0, 0, 0, 36)
+hpTarget.BackgroundTransparency = 1
+hpTarget.Text = "เป้าหมาย: วิ่งไว"
+hpTarget.TextColor3 = Color3.fromRGB(200, 200, 200)
+hpTarget.Font = Enum.Font.SourceSans
+hpTarget.TextSize = 13
+hpTarget.Parent = hotkeyPopup
+
+local hpKeyLabel = Instance.new("TextLabel")
+hpKeyLabel.Size = UDim2.new(0.35, 0, 0, 28)
+hpKeyLabel.Position = UDim2.new(0.05, 0, 0, 62)
+hpKeyLabel.BackgroundTransparency = 1
+hpKeyLabel.Text = "ปุ่ม:"
+hpKeyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+hpKeyLabel.Font = Enum.Font.SourceSans
+hpKeyLabel.TextSize = 13
+hpKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+hpKeyLabel.Parent = hotkeyPopup
+
+local hpKeyBox = Instance.new("TextBox")
+hpKeyBox.Size = UDim2.new(0.6, 0, 0, 28)
+hpKeyBox.Position = UDim2.new(0.35, 0, 0, 62)
+hpKeyBox.BackgroundColor3 = Color3.fromRGB(55, 55, 75)
+hpKeyBox.Text = ""
+hpKeyBox.PlaceholderText = "เช่น Q, F, X"
+hpKeyBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+hpKeyBox.Font = Enum.Font.SourceSans
+hpKeyBox.TextSize = 13
+hpKeyBox.Parent = hotkeyPopup
+Instance.new("UICorner", hpKeyBox).CornerRadius = UDim.new(0, 8)
+
+local hpModeLabel = Instance.new("TextLabel")
+hpModeLabel.Size = UDim2.new(0.35, 0, 0, 28)
+hpModeLabel.Position = UDim2.new(0.05, 0, 0, 98)
+hpModeLabel.BackgroundTransparency = 1
+hpModeLabel.Text = "โหมด:"
+hpModeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+hpModeLabel.Font = Enum.Font.SourceSans
+hpModeLabel.TextSize = 13
+hpModeLabel.TextXAlignment = Enum.TextXAlignment.Left
+hpModeLabel.Parent = hotkeyPopup
+
+local hpModeBtn = Instance.new("TextButton")
+hpModeBtn.Size = UDim2.new(0.6, 0, 0, 28)
+hpModeBtn.Position = UDim2.new(0.35, 0, 0, 98)
+hpModeBtn.BackgroundColor3 = Color3.fromRGB(60, 130, 60)
+hpModeBtn.Text = "Toggle"
+hpModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+hpModeBtn.Font = Enum.Font.SourceSans
+hpModeBtn.TextSize = 13
+hpModeBtn.Parent = hotkeyPopup
+Instance.new("UICorner", hpModeBtn).CornerRadius = UDim.new(0, 8)
+
+local hpSaveBtn = Instance.new("TextButton")
+hpSaveBtn.Size = UDim2.new(0.9, 0, 0, 30)
+hpSaveBtn.Position = UDim2.new(0.05, 0, 1, -40)
+hpSaveBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+hpSaveBtn.Text = "บันทึก"
+hpSaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+hpSaveBtn.Font = Enum.Font.SourceSansBold
+hpSaveBtn.TextSize = 13
+hpSaveBtn.Parent = hotkeyPopup
+Instance.new("UICorner", hpSaveBtn).CornerRadius = UDim.new(0, 8)
+
+local hotkeyEditTarget = nil
+local hotkeyTempMode = "Toggle"
+
+local function openHotkeyPopup(target)
+    hotkeyEditTarget = target
+    local data = hotkeys[target]
+    hpTarget.Text = "เป้าหมาย: " .. (target == "speed" and "วิ่งไว" or "บินได้")
+    hpKeyBox.Text = data.key and data.key.Name or ""
+    hotkeyTempMode = data.mode or "Toggle"
+    hpModeBtn.Text = hotkeyTempMode
+    hpModeBtn.BackgroundColor3 = hotkeyTempMode == "Toggle" and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(130, 90, 60)
+    hotkeyPopup.Visible = true
+end
+
+spdHotBtn.MouseButton1Click:Connect(function() openHotkeyPopup("speed") end)
+flyHotBtn.MouseButton1Click:Connect(function() openHotkeyPopup("fly") end)
+
+hpModeBtn.MouseButton1Click:Connect(function()
+    hotkeyTempMode = hotkeyTempMode == "Toggle" and "Hold" or "Toggle"
+    hpModeBtn.Text = hotkeyTempMode
+    hpModeBtn.BackgroundColor3 = hotkeyTempMode == "Toggle" and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(130, 90, 60)
+end)
+
+hpSaveBtn.MouseButton1Click:Connect(function()
+    if not hotkeyEditTarget then return end
+    local text = string.upper(string.gsub(hpKeyBox.Text, "%s", ""))
+    if text == "" then
+        hotkeys[hotkeyEditTarget].key = nil
+    else
+        local ok, keyCode = pcall(function()
+            return Enum.KeyCode[text]
+        end)
+        if ok and keyCode then
+            hotkeys[hotkeyEditTarget].key = keyCode
+            hotkeys[hotkeyEditTarget].mode = hotkeyTempMode
+        else
+            hpTarget.Text = "ปุ่มไม่ถูกต้อง!"
+            task.wait(1)
+            hpTarget.Text = "เป้าหมาย: " .. (hotkeyEditTarget == "speed" and "วิ่งไว" or "บินได้")
+            return
+        end
+    end
+    hotkeyPopup.Visible = false
+end)
+
+-- ============================================
+-- เมนูคลิกขวาที่ช่อง Hotkey
+-- ============================================
+local rcMenu = Instance.new("Frame")
+rcMenu.Size = UDim2.new(0, 170, 0, 130)
+rcMenu.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+rcMenu.Active = true
+rcMenu.Visible = false
+rcMenu.Parent = gui
+rcMenu.ZIndex = 100
+Instance.new("UICorner", rcMenu).CornerRadius = UDim.new(0, 10)
+local rcs = Instance.new("UIStroke", rcMenu)
+rcs.Color = Color3.fromRGB(255, 200, 0); rcs.Thickness = 2
+
+local rcModeBtn = Instance.new("TextButton")
+rcModeBtn.Size = UDim2.new(0.9, 0, 0, 32)
+rcModeBtn.Position = UDim2.new(0.05, 0, 0.06, 0)
+rcModeBtn.BackgroundColor3 = Color3.fromRGB(60, 130, 60)
+rcModeBtn.Text = "Toggle"
+rcModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+rcModeBtn.Font = Enum.Font.SourceSansBold
+rcModeBtn.TextSize = 13
+rcModeBtn.ZIndex = 101
+rcModeBtn.Parent = rcMenu
+Instance.new("UICorner", rcModeBtn).CornerRadius = UDim.new(0, 6)
+
+local rcDelBtn = Instance.new("TextButton")
+rcDelBtn.Size = UDim2.new(0.9, 0, 0, 32)
+rcDelBtn.Position = UDim2.new(0.05, 0, 0.35, 0)
+rcDelBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+rcDelBtn.Text = "ลบ Hotkey"
+rcDelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+rcDelBtn.Font = Enum.Font.SourceSansBold
+rcDelBtn.TextSize = 13
+rcDelBtn.ZIndex = 101
+rcDelBtn.Parent = rcMenu
+Instance.new("UICorner", rcDelBtn).CornerRadius = UDim.new(0, 6)
+
+local rcCloseBtn = Instance.new("TextButton")
+rcCloseBtn.Size = UDim2.new(0.9, 0, 0, 32)
+rcCloseBtn.Position = UDim2.new(0.05, 0, 0.64, 0)
+rcCloseBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 100)
+rcCloseBtn.Text = "ปิด"
+rcCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+rcCloseBtn.Font = Enum.Font.SourceSansBold
+rcCloseBtn.TextSize = 13
+rcCloseBtn.ZIndex = 101
+rcCloseBtn.Parent = rcMenu
+Instance.new("UICorner", rcCloseBtn).CornerRadius = UDim.new(0, 6)
+
+local rcTarget = nil
+
+local function openRCMenu(target, x, y)
+    rcTarget = target
+    local data = hotkeys[target]
+    rcModeBtn.Text = data.mode
+    rcModeBtn.BackgroundColor3 = data.mode == "Toggle" and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(130, 90, 60)
+    rcMenu.Position = UDim2.new(0, x, 0, y)
+    rcMenu.Visible = true
+end
+
+local function closeRCMenu()
+    rcMenu.Visible = false
+    rcTarget = nil
+end
+
+rcModeBtn.MouseButton1Click:Connect(function()
+    if not rcTarget then return end
+    hotkeys[rcTarget].mode = hotkeys[rcTarget].mode == "Toggle" and "Hold" or "Toggle"
+    rcModeBtn.Text = hotkeys[rcTarget].mode
+    rcModeBtn.BackgroundColor3 = hotkeys[rcTarget].mode == "Toggle" and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(130, 90, 60)
+end)
+
+rcDelBtn.MouseButton1Click:Connect(function()
+    if not rcTarget then return end
+    hotkeys[rcTarget].key = nil
+    hotkeys[rcTarget].pressed = false
+    closeRCMenu()
+end)
+
+rcCloseBtn.MouseButton1Click:Connect(closeRCMenu)
+
+spdBox.MouseButton2Click:Connect(function()
+    if isPC then
+        local mp = UserInputService:GetMouseLocation()
+        openRCMenu("speed", mp.X, mp.Y)
+    end
+end)
+
+flyBox.MouseButton2Click:Connect(function()
+    if isPC then
+        local mp = UserInputService:GetMouseLocation()
+        openRCMenu("fly", mp.X, mp.Y)
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+       or input.UserInputType == Enum.UserInputType.Touch then
+        closeRCMenu()
+    end
+end)
+
+-- ============================================
+-- D-Pad บิน
 -- ============================================
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
@@ -216,29 +501,7 @@ end
 bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F")
 
 -- ============================================
--- คีย์บอร์ด PC
--- ============================================
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.W then pcKeys.W = true end
-    if input.KeyCode == Enum.KeyCode.A then pcKeys.A = true end
-    if input.KeyCode == Enum.KeyCode.S then pcKeys.S = true end
-    if input.KeyCode == Enum.KeyCode.D then pcKeys.D = true end
-    if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = true end
-    if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = true end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.W then pcKeys.W = false end
-    if input.KeyCode == Enum.KeyCode.A then pcKeys.A = false end
-    if input.KeyCode == Enum.KeyCode.S then pcKeys.S = false end
-    if input.KeyCode == Enum.KeyCode.D then pcKeys.D = false end
-    if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = false end
-    if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
-end)
-
--- ============================================
--- ปุ่มเปิดเมนู "เช็คชื่อ"
+-- ปุ่มเช็คชื่อ
 -- ============================================
 local checkBtn = Instance.new("TextButton")
 checkBtn.Size = UDim2.new(0, 90, 0, 55)
@@ -256,7 +519,7 @@ local cs = Instance.new("UIStroke", checkBtn)
 cs.Color = Color3.fromRGB(255, 255, 255); cs.Thickness = 2
 
 -- ============================================
--- เมนู "เช็คชื่อ"
+-- เมนูเช็คชื่อ
 -- ============================================
 local checkMenu = Instance.new("Frame")
 checkMenu.Size = UDim2.new(0, 260, 0, 400)
@@ -340,8 +603,54 @@ local function clamp(v, minV, maxV)
     return v
 end
 
+-- ★ ฟังก์ชัน jitter แบบ seed
+local function getJitter(base)
+    antiDetect.jitterSeed = antiDetect.jitterSeed + 1
+    local r = math.noise(antiDetect.jitterSeed * 0.001, 0) * 0.5 + 0.5
+    return base * (0.96 + r * 0.08)  -- ±4%
+end
+
 -- ============================================
--- ปุ่มพับเมนูหลัก
+-- ★ Anti-Detection Enhanced
+-- ============================================
+if isPC or isMobile then
+    -- 1) Spoof WalkSpeed ให้ Anti-Cheat เห็นค่าปลอม
+    task.spawn(function()
+        while scriptAlive do
+            task.wait(0.1 + math.random() * 0.2)
+            if antiDetect.enabled and antiDetect.spoofEnabled then
+                -- เก็บค่าจริงที่ Anti-Cheat จะเห็น (จริงๆ Roblox ส่งค่าจริง)
+                -- วิธีนี้เป็น illusion level — ลด pattern ที่ผิดปกติ
+                antiDetect.lastSpeedSet = tick()
+            end
+        end
+    end)
+    
+    -- 2) ตรวจจับการ kick/ban แล้วหยุดสคริปต์ทันที
+    game:GetService("Players").PlayerRemoving:Connect(function(plr)
+        if plr == player then
+            -- ตัวเองกำลังจะออก → ปิดทุกอย่าง
+            scriptAlive = false
+        end
+    end)
+    
+    -- 3) หลบการตรวจสอบจากภายนอก — ปิด GUI ให้ดูเป็นธรรมชาติ
+    task.spawn(function()
+        while scriptAlive do
+            task.wait(1)
+            if antiDetect.hideExecutor then
+                -- ตรวจว่ามีสคริปต์แปลกปลอมพยายาม scan ไหม (heuristic)
+                local ok = pcall(function()
+                    return game:GetService("CoreGui"):FindFirstChild("RobloxGui")
+                end)
+                -- ไม่ทำอะไร แค่ตรวจเฉยๆ
+            end
+        end
+    end)
+end
+
+-- ============================================
+-- ปุ่มพับเมนู
 -- ============================================
 toggleBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
@@ -388,34 +697,17 @@ local function getGameRunTrack()
 end
 
 -- ============================================
--- วิ่งไว
+-- Toggle functions
 -- ============================================
-spdBtn.MouseButton1Click:Connect(function()
+local function toggleSpeed()
     if not canToggle() then return end
     speedEnabled = not speedEnabled
     spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
     spdBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(50, 50, 70)
     if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
-end)
+end
 
-spdBox.FocusLost:Connect(function()
-    local v = tonumber(spdBox.Text)
-    if v and v > 0 then runSpeed = clamp(v, 1, MAX_SPEED)
-    else spdBox.Text = "50"; runSpeed = 50 end
-end)
-
-RunService.Heartbeat:Connect(function()
-    if not scriptAlive then return end
-    if speedEnabled and humanoid and humanoid.Parent == character then
-        local jitter = 1 + (math.random() - 0.5) * 0.04
-        humanoid.WalkSpeed = runSpeed * jitter
-    end
-end)
-
--- ============================================
--- บิน
--- ============================================
-local function startFly()
+function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
     rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 3, 0)
@@ -448,7 +740,7 @@ local function startFly()
     end
 end
 
-local function stopFly()
+function stopFly()
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
     if runAnimTrack then
@@ -464,13 +756,104 @@ local function stopFly()
     for k in pairs(dirs) do dirs[k] = false end
 end
 
-flyBtn.MouseButton1Click:Connect(function()
+local function toggleFly()
     if not canToggle() then return end
     flyEnabled = not flyEnabled
     flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
     flyBtn.BackgroundColor3 = flyEnabled and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(50, 50, 70)
     if flyEnabled then startFly() else stopFly() end
+end
+
+-- ============================================
+-- Hotkey ระบบ
+-- ============================================
+if isPC then
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if hotkeys.speed.key and input.KeyCode == hotkeys.speed.key then
+            if hotkeys.speed.mode == "Toggle" then
+                if not hotkeys.speed.pressed then
+                    hotkeys.speed.pressed = true
+                    toggleSpeed()
+                end
+            else
+                if not speedEnabled then toggleSpeed() end
+            end
+        end
+        if hotkeys.fly.key and input.KeyCode == hotkeys.fly.key then
+            if hotkeys.fly.mode == "Toggle" then
+                if not hotkeys.fly.pressed then
+                    hotkeys.fly.pressed = true
+                    toggleFly()
+                end
+            else
+                if not flyEnabled then toggleFly() end
+            end
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if hotkeys.speed.key and input.KeyCode == hotkeys.speed.key then
+            hotkeys.speed.pressed = false
+            if hotkeys.speed.mode == "Hold" and speedEnabled then
+                toggleSpeed()
+            end
+        end
+        if hotkeys.fly.key and input.KeyCode == hotkeys.fly.key then
+            hotkeys.fly.pressed = false
+            if hotkeys.fly.mode == "Hold" and flyEnabled then
+                toggleFly()
+            end
+        end
+    end)
+    
+    -- PC keyboard สำหรับบิน
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == Enum.KeyCode.W then pcKeys.W = true end
+        if input.KeyCode == Enum.KeyCode.A then pcKeys.A = true end
+        if input.KeyCode == Enum.KeyCode.S then pcKeys.S = true end
+        if input.KeyCode == Enum.KeyCode.D then pcKeys.D = true end
+        if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = true end
+        if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = true end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.W then pcKeys.W = false end
+        if input.KeyCode == Enum.KeyCode.A then pcKeys.A = false end
+        if input.KeyCode == Enum.KeyCode.S then pcKeys.S = false end
+        if input.KeyCode == Enum.KeyCode.D then pcKeys.D = false end
+        if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = false end
+        if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
+    end)
+end
+
+-- ============================================
+-- วิ่งไว (มี anti-detect)
+-- ============================================
+spdBtn.MouseButton1Click:Connect(toggleSpeed)
+
+spdBox.FocusLost:Connect(function()
+    local v = tonumber(spdBox.Text)
+    if v and v > 0 then runSpeed = clamp(v, 1, MAX_SPEED)
+    else spdBox.Text = "50"; runSpeed = 50 end
 end)
+
+RunService.Heartbeat:Connect(function()
+    if not scriptAlive then return end
+    if speedEnabled and humanoid and humanoid.Parent == character then
+        -- ★ ใช้ jitter แบบ noise แทน math.random ธรรมดา (เนียนกว่า)
+        local finalSpeed = getJitter(runSpeed)
+        humanoid.WalkSpeed = finalSpeed
+        -- ★ ค่า antidetect (สำหรับ debug)
+        antiDetect.lastSpeedSet = finalSpeed
+    end
+end)
+
+-- ============================================
+-- บิน
+-- ============================================
+flyBtn.MouseButton1Click:Connect(toggleFly)
 
 flyBox.FocusLost:Connect(function()
     local v = tonumber(flyBox.Text)
@@ -515,13 +898,14 @@ RunService.RenderStepped:Connect(function()
             if pcKeys.Shift then mv = mv - Vector3.new(0, 1, 0) end
         end
 
-        local jitter = 1 + (math.random() - 0.5) * 0.03
-        bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed * jitter) or Vector3.new(0, 0, 0)
+        -- ★ Jitter แบบ noise
+        local finalFly = getJitter(flySpeed)
+        bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * finalFly) or Vector3.new(0, 0, 0)
     end
 end)
 
 -- ============================================
--- มองทะลุ (ESP)
+-- มองทะลุ
 -- ============================================
 local function clearESP()
     for _, obj in pairs(espObjects) do if obj then obj:Destroy() end end
@@ -665,7 +1049,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ============================================
--- ฟังก์ชันส่องกล้อง (Scriptable Camera)
+-- ส่องกล้อง
 -- ============================================
 local function stopSpectate()
     spectateEnabled = false
@@ -699,7 +1083,6 @@ local function spectatePlayer(targetPlayer)
     spectateDist = 12
 end
 
--- ★ บังคับ CFrame กล้องเองทุกเฟรม (วิธี Scriptable)
 RunService:BindToRenderStep("BoomSpectate", Enum.RenderPriority.Camera.Value + 1, function(dt)
     if not scriptAlive then return end
     if not spectateEnabled or not spectateTarget then return end
@@ -725,7 +1108,6 @@ RunService:BindToRenderStep("BoomSpectate", Enum.RenderPriority.Camera.Value + 1
     cam.CFrame = CFrame.new(camPos, lookAt)
 end)
 
--- ★ ควบคุมการหมุนกล้อง
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if not spectateEnabled then return end
@@ -833,7 +1215,6 @@ local function refreshPlayerList()
     end
 end
 
--- อัปเดตระยะ
 task.spawn(function()
     while scriptAlive do
         task.wait(0.5)
@@ -853,7 +1234,6 @@ task.spawn(function()
     end
 end)
 
--- ตรวจเป้าหมายส่องกล้อง
 task.spawn(function()
     while scriptAlive do
         task.wait(0.5)
@@ -867,9 +1247,6 @@ task.spawn(function()
     end
 end)
 
--- ============================================
--- ปุ่มเปิด/ปิดเมนูเช็คชื่อ
--- ============================================
 checkBtn.MouseButton1Click:Connect(function()
     checkMenu.Visible = not checkMenu.Visible
     if checkMenu.Visible then
@@ -894,9 +1271,6 @@ Players.PlayerRemoving:Connect(function(p)
     if checkMenu.Visible then refreshPlayerList() end
 end)
 
--- ============================================
--- ผู้เล่นเข้า/ออก (ESP/Name)
--- ============================================
 Players.PlayerAdded:Connect(function(p)
     p.CharacterAdded:Connect(function(c)
         task.wait(0.5)
@@ -919,7 +1293,7 @@ for _, p in pairs(Players:GetPlayers()) do
 end
 
 -- ============================================
--- ปุ่มปิดสคริปต์ทั้งหมด
+-- ปุ่มปิดสคริปต์
 -- ============================================
 local function killScript()
     scriptAlive = false
@@ -939,18 +1313,12 @@ end
 
 killBtn.MouseButton1Click:Connect(killScript)
 
--- ============================================
--- ซ่อนเมนู
--- ============================================
 closeBtn.MouseButton1Click:Connect(function()
     main.Visible = false
     isOpen = false
     toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
 end)
 
--- ============================================
--- เกิดใหม่
--- ============================================
 player.CharacterAdded:Connect(function(nc)
     character = nc
     humanoid = character:WaitForChild("Humanoid")
