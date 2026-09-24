@@ -1,5 +1,5 @@
 -- ============================================
--- By boom | วิ่งไว + บินได้ (D-Pad 6 ทิศ + อนิเมชั่นวิ่ง) 
+-- By boom | วิ่งไว + บินได้ (D-Pad 6 ทิศ + อนิเมชั่นวิ่งของเกม)
 -- + มองทะลุ + เห็นชื่อทะลุกำแพง + Anti-Detection
 -- + ปุ่มปิดสคริปต์ + ปรับระยะชื่อใน UI
 -- ============================================
@@ -219,50 +219,46 @@ local function clamp(v, minV, maxV)
     return v
 end
 
--- ============ โหลดอนิเมชั่นวิ่งจากเกม ============
-local function loadRunAnimation()
-    if runAnimTrack then
-        runAnimTrack:Stop(0)
-        runAnimTrack = nil
+-- ============ ดึงอนิเมชั่นวิ่งจาก Animate script ของเกม ============
+local function getGameRunTrack()
+    if not runAnimator then return nil end
+
+    -- 1) หา track ที่ Animate script โหลดไว้แล้ว (เสถียรที่สุด)
+    local tracks = runAnimator:GetPlayingAnimationTracks()
+    for _, track in pairs(tracks) do
+        local nm = track.Name or ""
+        local anim = track.Animation
+        local id = anim and anim.AnimationId or ""
+        if nm == "run" or nm == "RunAnim"
+           or id == "rbxassetid://507767714"
+           or string.find(id, "run") then
+            return track
+        end
     end
 
-    -- หา Animate script ของเกม
+    -- 2) โหลดจาก Animate.Run.RunAnim
     local animateScript = character:FindFirstChild("Animate")
-    if not animateScript then
-        -- fallback ท่าวิ่งมาตรฐาน R15
-        local anim = Instance.new("Animation")
-        anim.AnimationId = "rbxassetid://507767714"
-        local ok, track = pcall(function() return runAnimator:LoadAnimation(anim) end)
-        if ok and track then
-            track.Priority = Enum.AnimationPriority.Action
-            track.Looped = true
-            runAnimTrack = track
-        end
-        return
-    end
-
-    -- ดึง AnimationId จาก Animate script
-    local runAnimId = nil
-    pcall(function()
+    if animateScript then
         local runNode = animateScript:FindFirstChild("run")
-        if runNode then
-            local r = runNode:FindFirstChild("RunAnim")
-            if r then runAnimId = r.AnimationId end
+        local runAnimObj = runNode and runNode:FindFirstChild("RunAnim")
+        if runAnimObj and runAnimObj.AnimationId ~= "" then
+            local anim = Instance.new("Animation")
+            anim.AnimationId = runAnimObj.AnimationId
+            local ok, track = pcall(function()
+                return runAnimator:LoadAnimation(anim)
+            end)
+            if ok and track then return track end
         end
+    end
+
+    -- 3) Fallback: ท่าวิ่งมาตรฐาน R15
+    local fb = Instance.new("Animation")
+    fb.AnimationId = "rbxassetid://507767714"
+    local ok, track = pcall(function()
+        return runAnimator:LoadAnimation(fb)
     end)
-
-    if not runAnimId or runAnimId == "" then
-        runAnimId = "rbxassetid://507767714"
-    end
-
-    local anim = Instance.new("Animation")
-    anim.AnimationId = runAnimId
-    local ok, track = pcall(function() return runAnimator:LoadAnimation(anim) end)
-    if ok and track then
-        track.Priority = Enum.AnimationPriority.Action
-        track.Looped = true
-        runAnimTrack = track
-    end
+    if ok then return track end
+    return nil
 end
 
 -- ============ วิ่งไว ============
@@ -308,12 +304,14 @@ local function startFly()
     bodyGyro.Parent = rootPart
 
     humanoid.PlatformStand = false
-    humanoid:ChangeState(Enum.HumanoidStateType.Running)
 
-    -- ★ โหลดและเล่นอนิเมชั่นวิ่ง
-    loadRunAnimation()
+    -- รอ Animate script ตั้งตัวก่อน แล้วดึง track
+    task.wait(0.15)
+    runAnimTrack = getGameRunTrack()
     if runAnimTrack then
-        runAnimTrack:Play(0.1)
+        runAnimTrack.Priority = Enum.AnimationPriority.Action
+        runAnimTrack.Looped = true
+        pcall(function() runAnimTrack:Play(0.1) end)
     end
 
     pad.Visible = true
@@ -323,9 +321,9 @@ local function stopFly()
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
 
-    -- ★ หยุดอนิเมชั่น
     if runAnimTrack then
-        runAnimTrack:Stop(0.1)
+        pcall(function() runAnimTrack:Stop(0.1) end)
+        runAnimTrack = nil
     end
 
     if humanoid and humanoid.Parent == character then
@@ -355,15 +353,17 @@ end)
 RunService.RenderStepped:Connect(function()
     if not scriptAlive then return end
     if flyEnabled and bodyVel and rootPart.Parent == character then
-        local state = humanoid:GetState()
-        if state ~= Enum.HumanoidStateType.Running then
-            humanoid:ChangeState(Enum.HumanoidStateType.Running)
-        end
+        -- บังคับ Running state ทุกเฟรม (สำคัญ! ทำให้อนิเมชั่นไม่ถูกตัด)
+        humanoid:ChangeState(Enum.HumanoidStateType.Running)
         humanoid.PlatformStand = false
 
-        -- ★ บังคับเล่นอนิเมชั่นซ้ำ กัน Roblox หยุด
-        if runAnimTrack and not runAnimTrack.IsPlaying then
-            runAnimTrack:Play(0.1)
+        -- บังคับเล่นอนิเมชั่นซ้ำทุกเฟรม
+        if runAnimTrack then
+            if not runAnimTrack.IsPlaying then
+                pcall(function() runAnimTrack:Play(0.1) end)
+            end
+            local ratio = math.clamp(flySpeed / 50, 0.5, 3)
+            pcall(function() runAnimTrack:AdjustSpeed(ratio) end)
         end
 
         if bodyGyro then bodyGyro.CFrame = workspace.CurrentCamera.CFrame end
@@ -601,3 +601,5 @@ player.CharacterAdded:Connect(function(nc)
     if not scriptAlive then return end
     refreshESP(); refreshNames()
 end)
+
+print("Boom script loaded OK")
