@@ -595,7 +595,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ============ ฟังก์ชันส่องกล้อง (นั่งมองจากมุมของเขา) ============
+-- ============ ฟังก์ชันส่องกล้อง ============
 local function stopSpectate()
     spectateEnabled = false
     spectateTarget = nil
@@ -630,6 +630,26 @@ local function spectatePlayer(targetPlayer)
     cam.CameraSubject = targetHum
     cam.CameraType = Enum.CameraType.Custom
 end
+
+-- ★ บังคับ CameraSubject ทุกเฟรมตอนส่องกล้อง (กันเด้งกลับ)
+RunService.RenderStepped:Connect(function()
+    if not scriptAlive then return end
+    if spectateEnabled and spectateTarget then
+        local targetChar = spectateTarget.Character
+        if targetChar then
+            local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+            if targetHum then
+                local cam = workspace.CurrentCamera
+                if cam.CameraSubject ~= targetHum then
+                    cam.CameraSubject = targetHum
+                end
+                if cam.CameraType ~= Enum.CameraType.Custom then
+                    cam.CameraType = Enum.CameraType.Custom
+                end
+            end
+        end
+    end
+end)
 
 -- ============ รายชื่อผู้เล่น ============
 local function refreshPlayerList()
