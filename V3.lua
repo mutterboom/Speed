@@ -1,7 +1,7 @@
 -- ============================================
 -- By Boomxico | Dark Red Luxury UI + Anti-Detect
 -- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
--- V3 : กันปุ่มค้าง + อนิเมชั่นวิ่งทำงานปกติ
+-- V3 : จำสถานะหลังตาย + ปุ่ม P ซ่อน (เปิดจากเมนูหลัก)
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -32,6 +32,17 @@ if not runAnimator then
     runAnimator.Parent = humanoid
 end
 local runAnimTrack = nil
+
+-- ★ เก็บสถานะก่อนตาย
+local savedState = {
+    speed = false,
+    speedVal = 50,
+    fly = false,
+    flyVal = 50,
+    esp = false,
+    name = false,
+    nameDist = 800
+}
 
 local spectateTarget = nil
 local spectateEnabled = false
@@ -89,8 +100,9 @@ ts.Color = COLOR_BORDER
 ts.Thickness = 1.5
 ts.Transparency = 0.2
 
+-- หน้าต่างหลัก (สูงขึ้นเพื่อใส่ปุ่มเมนูรายชื่อ)
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 260, 0, 400)
+main.Size = UDim2.new(0, 260, 0, 450)
 main.Position = UDim2.new(0, 20, 0, 165)
 main.BackgroundColor3 = COLOR_BG
 main.BackgroundTransparency = 0.1
@@ -165,12 +177,12 @@ local function mkRow(y, labelText, defaultVal)
     return btn, box
 end
 
-local spdBtn, spdBox = mkRow(0.18, "วิ่งไว: ปิด", "50")
-local flyBtn, flyBox = mkRow(0.30, "บินได้: ปิด", "50")
+local spdBtn, spdBox = mkRow(0.17, "วิ่งไว: ปิด", "50")
+local flyBtn, flyBox = mkRow(0.27, "บินได้: ปิด", "50")
 
 local espBtn = Instance.new("TextButton")
 espBtn.Size = UDim2.new(0.52, 0, 0, 34)
-espBtn.Position = UDim2.new(0.05, 0, 0.42, 0)
+espBtn.Position = UDim2.new(0.05, 0, 0.37, 0)
 espBtn.BackgroundColor3 = COLOR_BG_LIGHT
 espBtn.BackgroundTransparency = 0.15
 espBtn.TextColor3 = COLOR_TEXT
@@ -184,7 +196,7 @@ es.Color = Color3.fromRGB(60, 60, 70); es.Thickness = 1; es.Transparency = 0.5
 
 local nameBtn = Instance.new("TextButton")
 nameBtn.Size = UDim2.new(0.52, 0, 0, 34)
-nameBtn.Position = UDim2.new(0.05, 0, 0.54, 0)
+nameBtn.Position = UDim2.new(0.05, 0, 0.47, 0)
 nameBtn.BackgroundColor3 = COLOR_BG_LIGHT
 nameBtn.BackgroundTransparency = 0.15
 nameBtn.TextColor3 = COLOR_TEXT
@@ -198,7 +210,7 @@ ns.Color = Color3.fromRGB(60, 60, 70); ns.Thickness = 1; ns.Transparency = 0.5
 
 local distLbl = Instance.new("TextLabel")
 distLbl.Size = UDim2.new(0.52, 0, 0, 34)
-distLbl.Position = UDim2.new(0.05, 0, 0.66, 0)
+distLbl.Position = UDim2.new(0.05, 0, 0.57, 0)
 distLbl.BackgroundColor3 = COLOR_BG_LIGHT
 distLbl.BackgroundTransparency = 0.15
 distLbl.Text = "ระยะชื่อ"
@@ -212,7 +224,7 @@ ds.Color = Color3.fromRGB(60, 60, 70); ds.Thickness = 1; ds.Transparency = 0.5
 
 local distBox = Instance.new("TextBox")
 distBox.Size = UDim2.new(0.3, 0, 0, 34)
-distBox.Position = UDim2.new(0.63, 0, 0.66, 0)
+distBox.Position = UDim2.new(0.63, 0, 0.57, 0)
 distBox.BackgroundColor3 = COLOR_BG_LIGHT
 distBox.BackgroundTransparency = 0.15
 distBox.Text = "800"
@@ -224,9 +236,24 @@ Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 10)
 local dbs = Instance.new("UIStroke", distBox)
 dbs.Color = COLOR_BORDER; dbs.Thickness = 1; dbs.Transparency = 0.4
 
+-- ★ ปุ่มเปิดเมนูรายชื่อ (ใหม่)
+local openListBtn = Instance.new("TextButton")
+openListBtn.Size = UDim2.new(0.9, 0, 0, 34)
+openListBtn.Position = UDim2.new(0.05, 0, 0.68, 0)
+openListBtn.BackgroundColor3 = Color3.fromRGB(140, 15, 15)
+openListBtn.BackgroundTransparency = 0.1
+openListBtn.Text = "เปิดเมนูรายชื่อ"
+openListBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+openListBtn.Font = Enum.Font.GothamBold
+openListBtn.TextSize = 13
+openListBtn.Parent = main
+Instance.new("UICorner", openListBtn).CornerRadius = UDim.new(0, 10)
+local olbs = Instance.new("UIStroke", openListBtn)
+olbs.Color = COLOR_ACCENT; olbs.Thickness = 1; olbs.Transparency = 0.2
+
 local killBtn = Instance.new("TextButton")
 killBtn.Size = UDim2.new(0.9, 0, 0, 34)
-killBtn.Position = UDim2.new(0.05, 0, 0.82, 0)
+killBtn.Position = UDim2.new(0.05, 0, 0.78, 0)
 killBtn.BackgroundColor3 = Color3.fromRGB(140, 15, 15)
 killBtn.BackgroundTransparency = 0.1
 killBtn.Text = "ปิดสคริปต์ทั้งหมด"
@@ -240,7 +267,7 @@ ks.Color = COLOR_ACCENT; ks.Thickness = 1; ks.Transparency = 0.2
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0.9, 0, 0, 34)
-closeBtn.Position = UDim2.new(0.05, 0, 0.92, 0)
+closeBtn.Position = UDim2.new(0.05, 0, 0.88, 0)
 closeBtn.BackgroundColor3 = COLOR_BG_LIGHT
 closeBtn.BackgroundTransparency = 0.15
 closeBtn.Text = "ซ่อนเมนู"
@@ -313,24 +340,9 @@ UserInputService.InputEnded:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
 end)
 
--- ปุ่มเช็คชื่อ (P)
-local checkBtn = Instance.new("TextButton")
-checkBtn.Size = UDim2.new(0, 55, 0, 55)
-checkBtn.Position = UDim2.new(0, 20, 0, 165)
-checkBtn.BackgroundColor3 = Color3.fromRGB(80, 15, 15)
-checkBtn.BackgroundTransparency = 0.1
-checkBtn.Text = "P"
-checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-checkBtn.Font = Enum.Font.GothamBold
-checkBtn.TextSize = 22
-checkBtn.Active = true
-checkBtn.Draggable = true
-checkBtn.Parent = gui
-Instance.new("UICorner", checkBtn).CornerRadius = UDim.new(1, 0)
-local cs = Instance.new("UIStroke", checkBtn)
-cs.Color = COLOR_ACCENT; cs.Thickness = 1.5; cs.Transparency = 0.2
+-- ★ ลบปุ่ม P ออกแล้ว (ใช้ปุ่มในเมนูหลักแทน)
 
--- เมนูเช็คชื่อ
+-- เมนูเช็คชื่อ (ซ่อนไว้)
 local checkMenu = Instance.new("Frame")
 checkMenu.Size = UDim2.new(0, 280, 0, 410)
 checkMenu.Position = UDim2.new(0.5, -140, 0.5, -205)
@@ -433,6 +445,14 @@ toggleBtn.MouseButton1Click:Connect(function()
     toggleBtn.BackgroundColor3 = isOpen and COLOR_BG or Color3.fromRGB(80, 15, 15)
 end)
 
+-- ★ ปุ่มเปิดเมนูรายชื่อ
+openListBtn.MouseButton1Click:Connect(function()
+    checkMenu.Visible = not checkMenu.Visible
+    if checkMenu.Visible then
+        refreshPlayerList()
+    end
+end)
+
 local function getGameRunTrack()
     if not runAnimator then return nil end
     local tracks = runAnimator:GetPlayingAnimationTracks()
@@ -468,14 +488,14 @@ local function getGameRunTrack()
     return nil
 end
 
--- ============================================
--- ★ วิ่งไว (WalkSpeed + Enforce ทุกเฟรม)
--- ============================================
+-- วิ่งไว
 spdBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     speedEnabled = not speedEnabled
     spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
     spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
+    savedState.speed = speedEnabled
+    savedState.speedVal = runSpeed
     if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
 end)
 
@@ -483,13 +503,12 @@ spdBox.FocusLost:Connect(function()
     local v = tonumber(spdBox.Text)
     if v and v > 0 then runSpeed = clamp(v, 1, MAX_SPEED)
     else spdBox.Text = "50"; runSpeed = 50 end
+    savedState.speedVal = runSpeed
 end)
 
--- ★ Enforce WalkSpeed ทุกเฟรม (แบบ V2)
 RunService.Heartbeat:Connect(function()
     if not scriptAlive then return end
     if speedEnabled and humanoid and humanoid.Parent == character then
-        -- ถ้าบินอยู่ ไม่ต้อง set WalkSpeed (บินใช้ BodyVelocity)
         if not flyEnabled then
             local jitter = 1 + (math.random() - 0.5) * 0.04
             humanoid.WalkSpeed = runSpeed * jitter
@@ -497,9 +516,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============================================
 -- บิน
--- ============================================
 local function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
@@ -543,7 +560,6 @@ local function stopFly()
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-        -- ★ คืนค่า WalkSpeed ตามสถานะวิ่ง
         if speedEnabled then
             humanoid.WalkSpeed = runSpeed
         else
@@ -559,6 +575,8 @@ flyBtn.MouseButton1Click:Connect(function()
     flyEnabled = not flyEnabled
     flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
     flyBtn.BackgroundColor3 = flyEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
+    savedState.fly = flyEnabled
+    savedState.flyVal = flySpeed
     if flyEnabled then startFly() else stopFly() end
 end)
 
@@ -566,6 +584,7 @@ flyBox.FocusLost:Connect(function()
     local v = tonumber(flyBox.Text)
     if v and v > 0 then flySpeed = clamp(v, 1, MAX_FLY)
     else flyBox.Text = "50"; flySpeed = 50 end
+    savedState.flyVal = flySpeed
 end)
 
 RunService.RenderStepped:Connect(function()
@@ -610,9 +629,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ============================================
 -- มองทะลุ
--- ============================================
 local function clearESP()
     for _, obj in pairs(espObjects) do if obj then obj:Destroy() end end
     espObjects = {}
@@ -645,12 +662,11 @@ espBtn.MouseButton1Click:Connect(function()
     espEnabled = not espEnabled
     espBtn.Text = espEnabled and "มองทะลุ: เปิด" or "มองทะลุ: ปิด"
     espBtn.BackgroundColor3 = espEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
+    savedState.esp = espEnabled
     refreshESP()
 end)
 
--- ============================================
--- เห็นชื่อ (ขาวสว่าง)
--- ============================================
+-- เห็นชื่อ
 local function clearNames()
     for _, obj in pairs(nameObjects) do if obj then obj:Destroy() end end
     nameObjects = {}
@@ -703,6 +719,7 @@ nameBtn.MouseButton1Click:Connect(function()
     nameEnabled = not nameEnabled
     nameBtn.Text = nameEnabled and "เห็นชื่อ: เปิด" or "เห็นชื่อ: ปิด"
     nameBtn.BackgroundColor3 = nameEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
+    savedState.name = nameEnabled
     refreshNames()
 end)
 
@@ -714,6 +731,7 @@ distBox.FocusLost:Connect(function()
         distBox.Text = "800"
         NAME_MAX_DIST = 800
     end
+    savedState.nameDist = NAME_MAX_DIST
 end)
 
 RunService.RenderStepped:Connect(function()
@@ -754,9 +772,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ============================================
 -- ส่องกล้อง
--- ============================================
 local function stopSpectate()
     spectateEnabled = false
     spectateTarget = nil
@@ -877,9 +893,7 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ============================================
 -- รายชื่อผู้เล่น
--- ============================================
 local function refreshPlayerList()
     for _, data in pairs(playerRows) do
         if data and data.row then data.row:Destroy() end
@@ -1032,13 +1046,6 @@ task.spawn(function()
     end
 end)
 
-checkBtn.MouseButton1Click:Connect(function()
-    checkMenu.Visible = not checkMenu.Visible
-    if checkMenu.Visible then
-        refreshPlayerList()
-    end
-end)
-
 cCloseBtn.MouseButton1Click:Connect(function()
     checkMenu.Visible = false
 end)
@@ -1100,6 +1107,7 @@ closeBtn.MouseButton1Click:Connect(function()
     toggleBtn.BackgroundColor3 = Color3.fromRGB(80, 15, 15)
 end)
 
+-- ★ เกิดใหม่ — คืนค่าสถานะที่บันทึกไว้
 player.CharacterAdded:Connect(function(nc)
     character = nc
     humanoid = character:WaitForChild("Humanoid")
@@ -1112,16 +1120,65 @@ player.CharacterAdded:Connect(function(nc)
     end
     runAnimTrack = nil
 
-    speedEnabled, flyEnabled = false, false
-    spdBtn.Text = "วิ่งไว: ปิด"; spdBtn.BackgroundColor3 = COLOR_BG_LIGHT
-    flyBtn.Text = "บินได้: ปิด"; flyBtn.BackgroundColor3 = COLOR_BG_LIGHT
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
-    pad.Visible = false
-    for k in pairs(dirs) do dirs[k] = false end
+
     task.wait(1)
     if not scriptAlive then return end
-    refreshESP(); refreshNames()
+
+    if savedState.speed then
+        speedEnabled = true
+        runSpeed = savedState.speedVal
+        spdBox.Text = tostring(runSpeed)
+        spdBtn.Text = "วิ่งไว: เปิด"
+        spdBtn.BackgroundColor3 = COLOR_ACTIVE
+        humanoid.WalkSpeed = runSpeed
+    else
+        speedEnabled = false
+        spdBtn.Text = "วิ่งไว: ปิด"
+        spdBtn.BackgroundColor3 = COLOR_BG_LIGHT
+        humanoid.WalkSpeed = 16
+    end
+
+    if savedState.fly then
+        flyEnabled = true
+        flySpeed = savedState.flyVal
+        flyBox.Text = tostring(flySpeed)
+        flyBtn.Text = "บินได้: เปิด"
+        flyBtn.BackgroundColor3 = COLOR_ACTIVE
+        startFly()
+    else
+        flyEnabled = false
+        flyBtn.Text = "บินได้: ปิด"
+        flyBtn.BackgroundColor3 = COLOR_BG_LIGHT
+        pad.Visible = false
+    end
+
+    if savedState.esp then
+        espEnabled = true
+        espBtn.Text = "มองทะลุ: เปิด"
+        espBtn.BackgroundColor3 = COLOR_ACTIVE
+        refreshESP()
+    else
+        espEnabled = false
+        espBtn.Text = "มองทะลุ: ปิด"
+        espBtn.BackgroundColor3 = COLOR_BG_LIGHT
+    end
+
+    if savedState.name then
+        nameEnabled = true
+        NAME_MAX_DIST = savedState.nameDist
+        distBox.Text = tostring(NAME_MAX_DIST)
+        nameBtn.Text = "เห็นชื่อ: เปิด"
+        nameBtn.BackgroundColor3 = COLOR_ACTIVE
+        refreshNames()
+    else
+        nameEnabled = false
+        nameBtn.Text = "เห็นชื่อ: ปิด"
+        nameBtn.BackgroundColor3 = COLOR_BG_LIGHT
+    end
+
+    for k in pairs(dirs) do dirs[k] = false end
 end)
 
 print("Boom script loaded OK | By Boomxico | V3 | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
