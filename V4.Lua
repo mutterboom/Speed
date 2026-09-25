@@ -1,7 +1,7 @@
 -- ============================================
--- By Boomxico | Golden Glass UI + Noclip
+-- By Boomxico | Golden Glass UI + Noclip + Hotkey
 -- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP + Noclip
--- V4 : UI มืออาชีพ + Noclip
+-- V4 : UI มืออาชีพ + Noclip + Hotkey (Q/E + Numpad)
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -26,6 +26,26 @@ local scriptAlive = true
 
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
 local pcKeys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
+
+-- ★ Hotkey ระบบ (Q/E + Numpad)
+local hotkeys = {
+    speed = {
+        keys = {
+            Enum.KeyCode.Q,
+            Enum.KeyCode.KeypadPlus,
+            Enum.KeyCode.KeypadOne
+        },
+        pressed = false
+    },
+    fly = {
+        keys = {
+            Enum.KeyCode.E,
+            Enum.KeyCode.KeypadMinus,
+            Enum.KeyCode.KeypadTwo
+        },
+        pressed = false
+    }
+}
 
 local runAnimator = humanoid:FindFirstChildOfClass("Animator")
 if not runAnimator then
@@ -69,20 +89,19 @@ local playerRows = {}
 -- ============================================
 local COLOR_BG = Color3.fromRGB(8, 8, 10)
 local COLOR_BG_LIGHT = Color3.fromRGB(18, 18, 22)
-local COLOR_BORDER = Color3.fromRGB(255, 180, 0)   -- ทอง
+local COLOR_BORDER = Color3.fromRGB(255, 180, 0)
 local COLOR_BORDER_DIM = Color3.fromRGB(120, 80, 0)
-local COLOR_TEXT = Color3.fromRGB(255, 220, 100)   -- เหลืองทอง
+local COLOR_TEXT = Color3.fromRGB(255, 220, 100)
 local COLOR_TEXT_DIM = Color3.fromRGB(180, 150, 60)
-local COLOR_ACCENT = Color3.fromRGB(255, 200, 0)   -- ทองสว่าง
+local COLOR_ACCENT = Color3.fromRGB(255, 200, 0)
 local COLOR_ACTIVE = Color3.fromRGB(255, 180, 0)
 local COLOR_GLOW = Color3.fromRGB(255, 230, 100)
 
 -- ============================================
--- 🎬 Animation System
+-- 🎬 Glow Animation
 -- ============================================
-local glowObjects = {}  -- เก็บ UI ที่ต้องกระพริบ
+local glowObjects = {}
 
--- ฟังก์ชันเพิ่ม Glow ให้กับ UI (ใช้ UIStroke กระพริบ)
 local function addGlow(target, baseTransparency, isTitle)
     local stroke = Instance.new("UIStroke", target)
     stroke.Color = COLOR_BORDER
@@ -92,16 +111,15 @@ local function addGlow(target, baseTransparency, isTitle)
     return stroke
 end
 
--- ลูปกระพริบ
 task.spawn(function()
     while scriptAlive do
         local t = tick()
         for _, obj in ipairs(glowObjects) do
             if obj.stroke and obj.stroke.Parent then
-                local pulse = math.sin(t * 2) * 0.5 + 0.5  -- 0 → 1
+                local pulse = math.sin(t * 2) * 0.5 + 0.5
                 local target = obj.title 
-                    and (0.1 + pulse * 0.4)   -- หัวข้อกระพริบชัด
-                    or (obj.base + pulse * 0.15)  -- ปุ่มอื่นๆ กระพริบนุ่ม
+                    and (0.1 + pulse * 0.4)
+                    or (obj.base + pulse * 0.15)
                 obj.stroke.Transparency = target
             end
         end
@@ -117,7 +135,6 @@ gui.Name = "ByBoomMenu"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- ปุ่มพับ (B) - วงกลมทองเรืองแสง
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0, 55, 0, 55)
 toggleBtn.Position = UDim2.new(0, 20, 0, 100)
@@ -133,9 +150,8 @@ toggleBtn.Parent = gui
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
 addGlow(toggleBtn, 0.2, true)
 
--- หน้าต่างหลัก (Glass effect โปร่งแสง 40%)
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 260, 0, 490)
+main.Size = UDim2.new(0, 260, 0, 510)
 main.Position = UDim2.new(0, 20, 0, 165)
 main.BackgroundColor3 = COLOR_BG
 main.BackgroundTransparency = 0.4
@@ -145,7 +161,6 @@ main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 18)
 addGlow(main, 0.4, false)
 
--- เส้นคาดทองด้านบน
 local topLine = Instance.new("Frame")
 topLine.Size = UDim2.new(1, -30, 0, 2)
 topLine.Position = UDim2.new(0, 15, 0, 0)
@@ -159,7 +174,6 @@ topLineGlow.Color = COLOR_GLOW
 topLineGlow.Thickness = 3
 topLineGlow.Transparency = 0.5
 
--- หัวข้อกระพริบ
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 0, 42)
 title.Position = UDim2.new(0, 10, 0, 12)
@@ -176,7 +190,6 @@ titleGlow.Thickness = 1
 titleGlow.Transparency = 0.3
 table.insert(glowObjects, {stroke = titleGlow, base = 0.3, title = true})
 
--- เส้นคั่น
 local divider = Instance.new("Frame")
 divider.Size = UDim2.new(1, -30, 0, 1)
 divider.Position = UDim2.new(0, 15, 0, 60)
@@ -186,7 +199,7 @@ divider.BorderSizePixel = 0
 divider.Parent = main
 
 -- ============================================
--- ฟังก์ชันสร้างปุ่ม (Glass + Gold)
+-- ฟังก์ชันสร้างปุ่ม
 -- ============================================
 local function mkRow(y, labelText, defaultVal)
     local btn = Instance.new("TextButton")
@@ -218,8 +231,20 @@ local function mkRow(y, labelText, defaultVal)
     return btn, box
 end
 
-local spdBtn, spdBox = mkRow(0.16, "วิ่งไว: ปิด", "50")
-local flyBtn, flyBox = mkRow(0.25, "บินได้: ปิด", "50")
+local spdBtn, spdBox = mkRow(0.14, "วิ่งไว: ปิด", "50")
+local flyBtn, flyBox = mkRow(0.22, "บินได้: ปิด", "50")
+
+-- ★ Hotkey Display
+local hotkeyLbl = Instance.new("TextLabel")
+hotkeyLbl.Size = UDim2.new(0.9, 0, 0, 16)
+hotkeyLbl.Position = UDim2.new(0.05, 0, 0.28, 0)
+hotkeyLbl.BackgroundTransparency = 1
+hotkeyLbl.Text = "Hotkey: Q/+/1=วิ่ง  E/-/2=บิน"
+hotkeyLbl.TextColor3 = COLOR_TEXT_DIM
+hotkeyLbl.Font = Enum.Font.Gotham
+hotkeyLbl.TextSize = 10
+hotkeyLbl.TextXAlignment = Enum.TextXAlignment.Center
+hotkeyLbl.Parent = main
 
 local espBtn = Instance.new("TextButton")
 espBtn.Size = UDim2.new(0.52, 0, 0, 34)
@@ -236,7 +261,7 @@ addGlow(espBtn, 0.6, false)
 
 local nameBtn = Instance.new("TextButton")
 nameBtn.Size = UDim2.new(0.52, 0, 0, 34)
-nameBtn.Position = UDim2.new(0.05, 0, 0.43, 0)
+nameBtn.Position = UDim2.new(0.05, 0, 0.42, 0)
 nameBtn.BackgroundColor3 = COLOR_BG_LIGHT
 nameBtn.BackgroundTransparency = 0.5
 nameBtn.TextColor3 = COLOR_TEXT
@@ -247,10 +272,9 @@ nameBtn.Parent = main
 Instance.new("UICorner", nameBtn).CornerRadius = UDim.new(0, 10)
 addGlow(nameBtn, 0.6, false)
 
--- ★ Noclip button
 local noclipBtn = Instance.new("TextButton")
 noclipBtn.Size = UDim2.new(0.52, 0, 0, 34)
-noclipBtn.Position = UDim2.new(0.05, 0, 0.52, 0)
+noclipBtn.Position = UDim2.new(0.05, 0, 0.50, 0)
 noclipBtn.BackgroundColor3 = COLOR_BG_LIGHT
 noclipBtn.BackgroundTransparency = 0.5
 noclipBtn.TextColor3 = COLOR_TEXT
@@ -263,7 +287,7 @@ addGlow(noclipBtn, 0.6, false)
 
 local distLbl = Instance.new("TextLabel")
 distLbl.Size = UDim2.new(0.52, 0, 0, 34)
-distLbl.Position = UDim2.new(0.05, 0, 0.61, 0)
+distLbl.Position = UDim2.new(0.05, 0, 0.58, 0)
 distLbl.BackgroundColor3 = COLOR_BG_LIGHT
 distLbl.BackgroundTransparency = 0.5
 distLbl.Text = "ระยะชื่อ"
@@ -276,7 +300,7 @@ addGlow(distLbl, 0.6, false)
 
 local distBox = Instance.new("TextBox")
 distBox.Size = UDim2.new(0.3, 0, 0, 34)
-distBox.Position = UDim2.new(0.63, 0, 0.61, 0)
+distBox.Position = UDim2.new(0.63, 0, 0.58, 0)
 distBox.BackgroundColor3 = COLOR_BG_LIGHT
 distBox.BackgroundTransparency = 0.5
 distBox.Text = "800"
@@ -287,10 +311,9 @@ distBox.Parent = main
 Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 10)
 addGlow(distBox, 0.5, false)
 
--- ปุ่มเปิดเมนูรายชื่อ
 local openListBtn = Instance.new("TextButton")
 openListBtn.Size = UDim2.new(0.9, 0, 0, 34)
-openListBtn.Position = UDim2.new(0.05, 0, 0.71, 0)
+openListBtn.Position = UDim2.new(0.05, 0, 0.68, 0)
 openListBtn.BackgroundColor3 = COLOR_BG_LIGHT
 openListBtn.BackgroundTransparency = 0.5
 openListBtn.Text = "เปิดเมนูรายชื่อ"
@@ -301,10 +324,9 @@ openListBtn.Parent = main
 Instance.new("UICorner", openListBtn).CornerRadius = UDim.new(0, 10)
 addGlow(openListBtn, 0.6, false)
 
--- ปุ่มปิดสคริปต์
 local killBtn = Instance.new("TextButton")
 killBtn.Size = UDim2.new(0.9, 0, 0, 34)
-killBtn.Position = UDim2.new(0.05, 0, 0.80, 0)
+killBtn.Position = UDim2.new(0.05, 0, 0.77, 0)
 killBtn.BackgroundColor3 = Color3.fromRGB(80, 15, 15)
 killBtn.BackgroundTransparency = 0.3
 killBtn.Text = "ปิดสคริปต์ทั้งหมด"
@@ -318,10 +340,9 @@ ks.Color = Color3.fromRGB(255, 60, 60)
 ks.Thickness = 1.5
 ks.Transparency = 0.4
 
--- ปุ่มซ่อนเมนู
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0.9, 0, 0, 34)
-closeBtn.Position = UDim2.new(0.05, 0, 0.89, 0)
+closeBtn.Position = UDim2.new(0.05, 0, 0.86, 0)
 closeBtn.BackgroundColor3 = COLOR_BG_LIGHT
 closeBtn.BackgroundTransparency = 0.5
 closeBtn.Text = "ซ่อนเมนู"
@@ -333,7 +354,7 @@ Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 addGlow(closeBtn, 0.7, false)
 
 -- ============================================
--- D-Pad บิน (ทองเรืองแสง)
+-- D-Pad บิน
 -- ============================================
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
@@ -386,13 +407,17 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = true end
     if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = true end
     
-    -- ★ Noclip hotkey (Ctrl + X)
     if input.KeyCode == Enum.KeyCode.X 
        and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
         noclipEnabled = not noclipEnabled
         noclipBtn.Text = noclipEnabled and "Noclip: เปิด" or "Noclip: ปิด"
         noclipBtn.BackgroundColor3 = noclipEnabled and Color3.fromRGB(120, 90, 0) or COLOR_BG_LIGHT
         savedState.noclip = noclipEnabled
+        if noclipEnabled then
+            enableNoclip()
+        else
+            disableNoclip()
+        end
     end
 end)
 
@@ -406,7 +431,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- ============================================
--- เมนูเช็คชื่อ (Glass + Gold)
+-- เมนูเช็คชื่อ
 -- ============================================
 local checkMenu = Instance.new("Frame")
 checkMenu.Size = UDim2.new(0, 280, 0, 410)
@@ -549,11 +574,11 @@ local function getGameRunTrack()
 end
 
 -- ============================================
--- ★ Noclip System
+-- Noclip System
 -- ============================================
 local noclipConnection = nil
 
-local function enableNoclip()
+function enableNoclip()
     if noclipConnection then return end
     noclipConnection = RunService.Stepped:Connect(function()
         if not noclipEnabled then return end
@@ -566,7 +591,7 @@ local function enableNoclip()
     end)
 end
 
-local function disableNoclip()
+function disableNoclip()
     if noclipConnection then
         noclipConnection:Disconnect()
         noclipConnection = nil
@@ -595,9 +620,9 @@ noclipBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- วิ่งไว
+-- ★ Toggle Functions (เรียกใช้ได้จากหลายที่)
 -- ============================================
-spdBtn.MouseButton1Click:Connect(function()
+local function toggleSpeed()
     if not canToggle() then return end
     speedEnabled = not speedEnabled
     spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
@@ -605,7 +630,22 @@ spdBtn.MouseButton1Click:Connect(function()
     savedState.speed = speedEnabled
     savedState.speedVal = runSpeed
     if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
-end)
+end
+
+local function toggleFly()
+    if not canToggle() then return end
+    flyEnabled = not flyEnabled
+    flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
+    flyBtn.BackgroundColor3 = flyEnabled and Color3.fromRGB(120, 90, 0) or COLOR_BG_LIGHT
+    savedState.fly = flyEnabled
+    savedState.flyVal = flySpeed
+    if flyEnabled then startFly() else stopFly() end
+end
+
+-- ============================================
+-- ★ วิ่งไว
+-- ============================================
+spdBtn.MouseButton1Click:Connect(toggleSpeed)
 
 spdBox.FocusLost:Connect(function()
     local v = tonumber(spdBox.Text)
@@ -625,9 +665,9 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ============================================
--- บิน
+-- ★ บิน
 -- ============================================
-local function startFly()
+function startFly()
     if bodyVel then bodyVel:Destroy() end
     if bodyGyro then bodyGyro:Destroy() end
     rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 3, 0)
@@ -660,7 +700,7 @@ local function startFly()
     end
 end
 
-local function stopFly()
+function stopFly()
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
     if runAnimTrack then
@@ -680,15 +720,7 @@ local function stopFly()
     for k in pairs(dirs) do dirs[k] = false end
 end
 
-flyBtn.MouseButton1Click:Connect(function()
-    if not canToggle() then return end
-    flyEnabled = not flyEnabled
-    flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
-    flyBtn.BackgroundColor3 = flyEnabled and Color3.fromRGB(120, 90, 0) or COLOR_BG_LIGHT
-    savedState.fly = flyEnabled
-    savedState.flyVal = flySpeed
-    if flyEnabled then startFly() else stopFly() end
-end)
+flyBtn.MouseButton1Click:Connect(toggleFly)
 
 flyBox.FocusLost:Connect(function()
     local v = tonumber(flyBox.Text)
@@ -725,8 +757,7 @@ RunService.RenderStepped:Connect(function()
             if dirs.D then mv = mv - Vector3.new(0, 1, 0) end
         end
 
-        if isPC then
-            if pcKeys.W then mv = mv + cam.CFrame.LookVector end
+        if isPC then            if pcKeys.W then mv = mv + cam.CFrame.LookVector end
             if pcKeys.S then mv = mv - cam.CFrame.LookVector end
             if pcKeys.A then mv = mv - cam.CFrame.RightVector end
             if pcKeys.D then mv = mv + cam.CFrame.RightVector end
@@ -738,6 +769,45 @@ RunService.RenderStepped:Connect(function()
         bodyVel.Velocity = mv.Magnitude > 0 and (mv.Unit * flySpeed * jitter) or Vector3.new(0, 0, 0)
     end
 end)
+
+-- ============================================
+-- ★ Hotkey Listener (Q/E + Numpad) — หลัง startFly พร้อมใช้
+-- ============================================
+local function isHotkeyPressed(inputKey, keyList)
+    for _, k in ipairs(keyList) do
+        if inputKey == k then return true end
+    end
+    return false
+end
+
+if isPC then
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        
+        if isHotkeyPressed(input.KeyCode, hotkeys.speed.keys) then
+            if not hotkeys.speed.pressed then
+                hotkeys.speed.pressed = true
+                toggleSpeed()
+            end
+        end
+        
+        if isHotkeyPressed(input.KeyCode, hotkeys.fly.keys) then
+            if not hotkeys.fly.pressed then
+                hotkeys.fly.pressed = true
+                toggleFly()
+            end
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if isHotkeyPressed(input.KeyCode, hotkeys.speed.keys) then
+            hotkeys.speed.pressed = false
+        end
+        if isHotkeyPressed(input.KeyCode, hotkeys.fly.keys) then
+            hotkeys.fly.pressed = false
+        end
+    end)
+end
 
 -- ============================================
 -- มองทะลุ
@@ -779,7 +849,7 @@ espBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- เห็นชื่อ (เหลืองทอง)
+-- เห็นชื่อ
 -- ============================================
 local function clearNames()
     for _, obj in pairs(nameObjects) do if obj then obj:Destroy() end end
@@ -806,7 +876,7 @@ local function applyName(char, pName)
     lbl.Size = UDim2.new(1, 0, 1, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = pName or "?"
-    lbl.TextColor3 = Color3.fromRGB(255, 220, 100)   -- ทอง
+    lbl.TextColor3 = Color3.fromRGB(255, 220, 100)
     lbl.TextStrokeTransparency = 0
     lbl.TextStrokeColor3 = Color3.fromRGB(80, 40, 0)
     lbl.Font = Enum.Font.GothamBold
@@ -1316,7 +1386,6 @@ player.CharacterAdded:Connect(function(nc)
         nameBtn.BackgroundColor3 = COLOR_BG_LIGHT
     end
 
-    -- ★ Noclip กลับมา
     if savedState.noclip then
         noclipEnabled = true
         noclipBtn.Text = "Noclip: เปิด"
@@ -1331,4 +1400,4 @@ player.CharacterAdded:Connect(function(nc)
     for k in pairs(dirs) do dirs[k] = false end
 end)
 
-print("Boom script loaded OK | By Boomxico | V4 Golden Glass | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
+print("Boom script loaded OK | By Boomxico | V4 Golden + Hotkey | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
