@@ -1,108 +1,34 @@
--- ============================================
--- By Boomxico | Modern Dark Crimson UI (v2.5 FIXED)
--- ============================================
+-- ===================== ปุ่ม Keybind ที่เหลือ =====================
+local noclipKeyBtn, noclipModeBtn = createKeybindRow(0.52, "Noclip", "Noclip")
 
-if not game:IsLoaded() then game.Loaded:Wait() end
+local kbClose = Instance.new("TextButton")
+kbClose.Size = UDim2.new(0.9, 0, 0, 30)
+kbClose.Position = UDim2.new(0.05, 0, 0.82, 0)
+kbClose.BackgroundColor3 = COLOR_CARD
+kbClose.BackgroundTransparency = 0.15
+kbClose.Text = "Fold"
+kbClose.TextColor3 = COLOR_TEXT
+kbClose.Font = Enum.Font.GothamMedium
+kbClose.TextSize = 11
+kbClose.Parent = keybindFrame
+Instance.new("UICorner", kbClose).CornerRadius = UDim.new(0, 8)
+applyStroke(kbClose, COLOR_BORDER_DIM, 1, 0.5)
 
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Lighting         = game:GetService("Lighting")
-local Workspace        = game:GetService("Workspace")
+kbClose.MouseButton1Click:Connect(function()
+    keybindFrame.Visible = false
+    updateToggleUI(keybindMenuBtn, false)
+end)
 
-local player    = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid  = character:WaitForChild("Humanoid")
-local rootPart  = character:WaitForChild("HumanoidRootPart")
+keybindMenuBtn.MouseButton1Click:Connect(function()
+    keybindFrame.Visible = not keybindFrame.Visible
+    updateToggleUI(keybindMenuBtn, keybindFrame.Visible)
+end)
 
-local isPC     = UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled
-local isMobile = UserInputService.TouchEnabled
+-- ====================================================
+-- 🔴 FLY SYSTEM (เวอร์ชันสมบูรณ์)
+-- ====================================================
+local flyConn = nil
 
--- ===================== State =====================
-local speedEnabled, flyEnabled, noclipEnabled = false, false, false
-local infJumpEnabled, espEnabled, nameEnabled = false, false, false
-local fullbrightEnabled, noFogEnabled         = false, false
-
-local runSpeed, flySpeed = 50, 50
-local bodyVel, bodyGyro
-local scriptAlive = true
-
-local dirs   = {F=false, B=false, L=false, R=false, U=false, D=false}
-local pcKeys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
-
-local MAX_SPEED, MAX_FLY = 200, 300
-local TOGGLE_COOLDOWN    = 0.35
-local lastToggleTime     = 0
-local NAME_MAX_DIST      = 800
-
-local espObjects, nameObjects, playerRows, connections = {}, {}, {}, {}
-local noclipConn, flyConn = nil, nil
-
-local originalLighting = {
-    Brightness     = Lighting.Brightness,
-    ClockTime      = Lighting.ClockTime,
-    FogEnd         = Lighting.FogEnd,
-    FogStart       = Lighting.FogStart,
-    GlobalShadows  = Lighting.GlobalShadows,
-    OutdoorAmbient = Lighting.OutdoorAmbient,
-    Ambient        = Lighting.Ambient,
-}
-
--- ===================== Colors =====================
-local COLOR_BG         = Color3.fromRGB(10, 10, 14)
-local COLOR_CARD       = Color3.fromRGB(20, 20, 26)
-local COLOR_BORDER     = Color3.fromRGB(220, 30, 40)
-local COLOR_BORDER_DIM = Color3.fromRGB(60, 20, 25)
-local COLOR_TEXT       = Color3.fromRGB(245, 245, 250)
-local COLOR_SUBTEXT    = Color3.fromRGB(140, 140, 150)
-local COLOR_ACCENT     = Color3.fromRGB(235, 35, 45)
-local COLOR_ACTIVE     = Color3.fromRGB(190, 20, 30)
-local COLOR_OFF        = Color3.fromRGB(30, 30, 38)
-local COLOR_KILL       = Color3.fromRGB(180, 25, 25)
-
--- ===================== Helpers =====================
-local function canToggle()
-    local now = tick()
-    if now - lastToggleTime < TOGGLE_COOLDOWN then return false end
-    lastToggleTime = now
-    return true
-end
-
-local function safeDestroy(obj)
-    if obj and obj.Parent then pcall(function() obj:Destroy() end) end
-end
-
-local function addConn(conn)
-    table.insert(connections, conn)
-    return conn
-end
-
-local function applyStroke(parent, color, thickness, transparency)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = color or COLOR_BORDER
-    stroke.Thickness = thickness or 1
-    stroke.Transparency = transparency or 0.3
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Parent = parent
-    return stroke
-end
-
--- ===================== Character Respawn =====================
-local function onCharacterAdded(newChar)
-    character = newChar
-    humanoid  = character:WaitForChild("Humanoid")
-    rootPart  = character:WaitForChild("HumanoidRootPart")
-
-    task.wait(0.5)
-    if flyEnabled then
-        startFly() -- รีสตาร์ทบินหลังเกิดใหม่
-    end
-    if speedEnabled and humanoid then
-        humanoid.WalkSpeed = runSpeed
-    end
-end
-
--- ===================== FLY SYSTEM (FIXED v3) =====================
 local function applyFlyProtection()
     if not humanoid or not humanoid.Parent then return end
     pcall(function()
@@ -131,11 +57,11 @@ local function createFlyBodies()
     bodyGyro.Name = "BoomFlyGyro"
     bodyGyro.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
     bodyGyro.P = 12500
-    bodyGyro.CFrame = Workspace.CurrentCamera.CFrame
+    bodyGyro.CFrame = workspace.CurrentCamera.CFrame
     bodyGyro.Parent = rootPart
 end
 
-function stopFly()
+local function stopFly()
     flyEnabled = false
     if flyConn then flyConn:Disconnect() flyConn = nil end
     if bodyVel then safeDestroy(bodyVel) bodyVel = nil end
@@ -143,9 +69,10 @@ function stopFly()
     if humanoid and humanoid.Parent then
         pcall(function() humanoid.PlatformStanding = false end)
     end
+    updateToggleUI(flyBtn, false, "บินได้")
 end
 
-function startFly()
+local function startFly()
     if not rootPart or not rootPart.Parent then
         warn("[BoomFly] rootPart หาย"); return
     end
@@ -167,7 +94,7 @@ function startFly()
 
         applyFlyProtection()
 
-        local cam = Workspace.CurrentCamera
+        local cam = workspace.CurrentCamera
         bodyGyro.CFrame = cam.CFrame
 
         local moveDir = Vector3.zero
@@ -205,224 +132,56 @@ function startFly()
     end)
 end
 
--- ===================== Input (PC) =====================
-addConn(UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.W then pcKeys.W = true end
-    if input.KeyCode == Enum.KeyCode.S then pcKeys.S = true end
-    if input.KeyCode == Enum.KeyCode.A then pcKeys.A = true end
-    if input.KeyCode == Enum.KeyCode.D then pcKeys.D = true end
-    if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = true end
-    if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = true end
-end))
-
-addConn(UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.W then pcKeys.W = false end
-    if input.KeyCode == Enum.KeyCode.S then pcKeys.S = false end
-    if input.KeyCode == Enum.KeyCode.A then pcKeys.A = false end
-    if input.KeyCode == Enum.KeyCode.D then pcKeys.D = false end
-    if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = false end
-    if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
-end))
-
--- ===================== GUI =====================
-local gui = Instance.new("ScreenGui")
-gui.Name = "ByBoomMenu"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = player:WaitForChild("PlayerGui")
-
--- Floating Button
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0, 46, 0, 46)
-toggleBtn.Position = UDim2.new(0, 20, 0, 120)
-toggleBtn.BackgroundColor3 = COLOR_BG
-toggleBtn.BackgroundTransparency = 0.15
-toggleBtn.Text = "B"
-toggleBtn.TextColor3 = COLOR_ACCENT
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.TextSize = 20
-toggleBtn.Active = true
-toggleBtn.Draggable = true
-toggleBtn.Parent = gui
-Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 10)
-applyStroke(toggleBtn, COLOR_BORDER, 1.2, 0.2)
-
--- Main Menu
-local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 280, 0, 480)
-main.Position = UDim2.new(0, 20, 0, 180)
-main.BackgroundColor3 = COLOR_BG
-main.BackgroundTransparency = 0.15
-main.Active = true
-main.Draggable = true
-main.ClipsDescendants = true
-main.Parent = gui
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
-applyStroke(main, COLOR_BORDER, 1.2, 0.3)
-
-local mainTopLine = Instance.new("Frame")
-mainTopLine.Size = UDim2.new(1, 0, 0, 3)
-mainTopLine.BackgroundColor3 = COLOR_ACCENT
-mainTopLine.BorderSizePixel = 0
-mainTopLine.Parent = main
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -20, 0, 40)
-title.Position = UDim2.new(0, 12, 0, 3)
-title.BackgroundTransparency = 1
-title.Text = "BY BOOMXICO (FIXED)"
-title.TextColor3 = COLOR_TEXT
-title.Font = Enum.Font.GothamBold
-title.TextSize = 14
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = main
-
-local mainScroll = Instance.new("ScrollingFrame")
-mainScroll.Size = UDim2.new(1, -16, 1, -50)
-mainScroll.Position = UDim2.new(0, 8, 0, 45)
-mainScroll.BackgroundTransparency = 1
-mainScroll.BorderSizePixel = 0
-mainScroll.ScrollBarThickness = 3
-mainScroll.ScrollBarImageColor3 = COLOR_ACCENT
-mainScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-mainScroll.CanvasSize = UDim2.new(0,0,0,0)
-mainScroll.Parent = main
-
-local mainLayout = Instance.new("UIListLayout")
-mainLayout.Padding = UDim.new(0, 6)
-mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
-mainLayout.Parent = mainScroll
-
--- ===================== UI Helpers =====================
-local function updateToggleUI(btn, enabled)
-    btn.Text = enabled and "เปิด" or "ปิด"
-    btn.BackgroundColor3 = enabled and COLOR_ACTIVE or COLOR_OFF
-    btn.TextColor3 = enabled and Color3.fromRGB(255,255,255) or COLOR_SUBTEXT
-end
-
-local function mkToggle(labelText, callback)
-    local card = Instance.new("Frame")
-    card.Size = UDim2.new(1, 0, 0, 36)
-    card.BackgroundColor3 = COLOR_CARD
-    card.BackgroundTransparency = 0.2
-    card.Parent = mainScroll
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
-    applyStroke(card, COLOR_BORDER_DIM, 1, 0.6)
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0.65, -10, 1, 0)
-    lbl.Position = UDim2.new(0, 10, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = COLOR_TEXT
-    lbl.Font = Enum.Font.GothamMedium
-    lbl.TextSize = 12
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = card
-
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.3, 0, 0, 24)
-    btn.Position = UDim2.new(0.68, 0, 0.5, -12)
-    btn.BackgroundColor3 = COLOR_OFF
-    btn.Text = "ปิด"
-    btn.TextColor3 = COLOR_SUBTEXT
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 11
-    btn.Parent = card
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
-    local state = false
-    btn.MouseButton1Click:Connect(function()
-        if not canToggle() then return end
-        state = not state
-        updateToggleUI(btn, state)
-        if callback then callback(state) end
-    end)
-
-    return btn, card
-end
-
-local function mkRow(labelText, defaultVal, callback)
-    local card = Instance.new("Frame")
-    card.Size = UDim2.new(1, 0, 0, 36)
-    card.BackgroundColor3 = COLOR_CARD
-    card.BackgroundTransparency = 0.2
-    card.Parent = mainScroll
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
-    applyStroke(card, COLOR_BORDER_DIM, 1, 0.6)
-
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.65, -10, 1, 0)
-    btn.Position = UDim2.new(0, 10, 0, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text = labelText .. ": ปิด"
-    btn.TextColor3 = COLOR_TEXT
-    btn.Font = Enum.Font.GothamMedium
-    btn.TextSize = 12
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.Parent = card
-
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0.28, 0, 0, 24)
-    box.Position = UDim2.new(0.68, 0, 0.5, -12)
-    box.BackgroundColor3 = COLOR_OFF
-    box.Text = defaultVal
-    box.TextColor3 = COLOR_ACCENT
-    box.Font = Enum.Font.GothamBold
-    box.TextSize = 12
-    box.ClearTextOnFocus = false
-    box.Parent = card
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
-
-    local state = false
-    btn.MouseButton1Click:Connect(function()
-        if not canToggle() then return end
-        state = not state
-        btn.Text = labelText .. (state and ": เปิด" or ": ปิด")
-        btn.TextColor3 = state and COLOR_ACCENT or COLOR_TEXT
-        if callback then callback(state) end
-    end)
-
-    box.FocusLost:Connect(function()
-        local val = tonumber(box.Text)
-        if val then
-            box.Text = tostring(math.clamp(val, 1, MAX_SPEED))
-        end
-    end)
-
-    return btn, box, function() return state end
-end
-
--- ===================== สร้างปุ่มทั้งหมด =====================
+-- ====================================================
+-- 🔴 ผูก Logic ปุ่มทั้งหมด
+-- ====================================================
 
 -- Speed
-local spdBtn, spdBox = mkRow("วิ่งไว", "50", function(state)
-    speedEnabled = state
-    if humanoid then humanoid.WalkSpeed = state and runSpeed or 16 end
+spdBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
+    speedEnabled = not speedEnabled
+    updateToggleUI(spdBtn, speedEnabled, "วิ่งไว")
+    if humanoid then
+        humanoid.WalkSpeed = speedEnabled and runSpeed or 16
+    end
 end)
 spdBox.FocusLost:Connect(function()
     local v = tonumber(spdBox.Text)
-    if v then runSpeed = math.clamp(v, 1, MAX_SPEED) end
+    if v then
+        runSpeed = clamp(v, 1, MAX_SPEED)
+        spdBox.Text = tostring(runSpeed)
+        if speedEnabled and humanoid then humanoid.WalkSpeed = runSpeed end
+    else
+        spdBox.Text = tostring(runSpeed)
+    end
 end)
 
--- Fly (สำคัญ!)
-local flyBtn, flyBox = mkRow("บินได้", "50", function(state)
-    if state then
-        if not flyEnabled then startFly() end
+-- Fly
+flyBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
+    if flyEnabled then
+        stopFly()
     else
-        if flyEnabled then stopFly() end
+        startFly()
+        updateToggleUI(flyBtn, true, "บินได้")
     end
 end)
 flyBox.FocusLost:Connect(function()
     local v = tonumber(flyBox.Text)
-    if v then flySpeed = math.clamp(v, 1, MAX_FLY) end
+    if v then
+        flySpeed = clamp(v, 1, MAX_FLY)
+        flyBox.Text = tostring(flySpeed)
+    else
+        flyBox.Text = tostring(flySpeed)
+    end
 end)
 
 -- Noclip
-mkToggle("Noclip", function(state)
-    noclipEnabled = state
-    if state then
+noclipBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
+    noclipEnabled = not noclipEnabled
+    updateToggleUI(noclipBtn, noclipEnabled)
+    if noclipEnabled then
         if noclipConn then noclipConn:Disconnect() end
         noclipConn = addConn(RunService.Stepped:Connect(function()
             if character then
@@ -437,14 +196,22 @@ mkToggle("Noclip", function(state)
 end)
 
 -- Infinite Jump
-mkToggle("Infinite Jump", function(state)
-    infJumpEnabled = state
+infJumpBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
+    infJumpEnabled = not infJumpEnabled
+    updateToggleUI(infJumpBtn, infJumpEnabled)
 end)
+addConn(UserInputService.JumpRequest:Connect(function()
+    if infJumpEnabled and humanoid then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end))
 
 -- Fullbright
-mkToggle("Fullbright", function(state)
-    fullbrightEnabled = state
-    if state then
+fullbrightBtn.MouseButton1Click:Connect(function()
+    fullbrightEnabled = not fullbrightEnabled
+    updateToggleUI(fullbrightBtn, fullbrightEnabled)
+    if fullbrightEnabled then
         Lighting.Brightness = 2
         Lighting.ClockTime = 14
         Lighting.GlobalShadows = false
@@ -456,9 +223,10 @@ mkToggle("Fullbright", function(state)
 end)
 
 -- No Fog
-mkToggle("No Fog", function(state)
-    noFogEnabled = state
-    if state then
+noFogBtn.MouseButton1Click:Connect(function()
+    noFogEnabled = not noFogEnabled
+    updateToggleUI(noFogBtn, noFogEnabled)
+    if noFogEnabled then
         Lighting.FogStart = 1e6
         Lighting.FogEnd = 1e6
     else
@@ -468,53 +236,391 @@ mkToggle("No Fog", function(state)
 end)
 
 -- ESP
-mkToggle("มองทะลุ (ESP)", function(state)
-    espEnabled = state
+local function createESP(targetPlayer)
+    if targetPlayer == player or espObjects[targetPlayer] then return end
+    if not targetPlayer.Character then return end
+    local hl = Instance.new("Highlight")
+    hl.Name = "BoomESP"
+    hl.FillColor = COLOR_ACCENT
+    hl.FillTransparency = 0.5
+    hl.OutlineColor = Color3.fromRGB(255,255,255)
+    hl.Adornee = targetPlayer.Character
+    hl.Parent = gui
+    espObjects[targetPlayer] = hl
+end
+
+local function removeESP(targetPlayer)
+    if espObjects[targetPlayer] then
+        safeDestroy(espObjects[targetPlayer])
+        espObjects[targetPlayer] = nil
+    end
+end
+
+espBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
+    espEnabled = not espEnabled
+    updateToggleUI(espBtn, espEnabled)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= player then
-            if state then
-                if not espObjects[p] and p.Character then
-                    local hl = Instance.new("Highlight")
-                    hl.FillColor = COLOR_ACCENT
-                    hl.FillTransparency = 0.5
-                    hl.OutlineColor = Color3.fromRGB(255,255,255)
-                    hl.Adornee = p.Character
-                    hl.Parent = gui
-                    espObjects[p] = hl
-                end
-            else
-                if espObjects[p] then safeDestroy(espObjects[p]) espObjects[p] = nil end
-            end
+            if espEnabled then createESP(p) else removeESP(p) end
         end
     end
 end)
 
 -- Name Tags
-mkToggle("แสดงชื่อผู้เล่น", function(state)
-    nameEnabled = state
+local function createNameTag(targetPlayer)
+    if targetPlayer == player or nameObjects[targetPlayer] then return end
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "BoomNameTag"
+    bb.Size = UDim2.new(0, 160, 0, 30)
+    bb.StudsOffset = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop = true
+    bb.Parent = gui
+
+    local txt = Instance.new("TextLabel")
+    txt.Size = UDim2.new(1, 0, 1, 0)
+    txt.BackgroundTransparency = 1
+    txt.Text = targetPlayer.DisplayName
+    txt.TextColor3 = COLOR_ACCENT
+    txt.Font = Enum.Font.GothamBold
+    txt.TextSize = 12
+    txt.TextStrokeTransparency = 0.2
+    txt.Parent = bb
+
+    nameObjects[targetPlayer] = {Gui = bb, Text = txt}
+end
+
+local function removeNameTag(targetPlayer)
+    if nameObjects[targetPlayer] then
+        safeDestroy(nameObjects[targetPlayer].Gui)
+        nameObjects[targetPlayer] = nil
+    end
+end
+
+nameBtn.MouseButton1Click:Connect(function()
+    if not canToggle() then return end
+    nameEnabled = not nameEnabled
+    updateToggleUI(nameBtn, nameEnabled)
+    if nameEnabled then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player then createNameTag(p) end
+        end
+    else
+        for p, _ in pairs(nameObjects) do removeNameTag(p) end
+    end
 end)
 
--- ปุ่ม Toggle Main Menu
+distBox.FocusLost:Connect(function()
+    local v = tonumber(distBox.Text)
+    if v then
+        NAME_MAX_DIST = clamp(v, 50, 5000)
+        distBox.Text = tostring(NAME_MAX_DIST)
+    else
+        distBox.Text = tostring(NAME_MAX_DIST)
+    end
+end)
+
+-- Player Events
+addConn(Players.PlayerAdded:Connect(function(p)
+    if espEnabled then createESP(p) end
+    if nameEnabled then createNameTag(p) end
+end))
+
+addConn(Players.PlayerRemoving:Connect(function(p)
+    removeESP(p)
+    removeNameTag(p)
+end))
+
+-- ====================================================
+-- 🔴 Player List / Spectate / Attach
+-- ====================================================
+local function stopSpectate()
+    spectateEnabled = false
+    spectateTarget = nil
+    if humanoid then
+        workspace.CurrentCamera.CameraSubject = humanoid
+    end
+end
+
+local function stopAttach()
+    attachEnabled = false
+    attachTarget = nil
+    aStatusLbl.Text = "สถานะ: ยังไม่ได้เกาะ"
+    aStatusLbl.TextColor3 = COLOR_TEXT
+end
+
+local function startAttach(targetP)
+    if targetP and targetP.Character and targetP.Character:FindFirstChild("HumanoidRootPart") then
+        attachTarget = targetP
+        attachEnabled = true
+        aStatusLbl.Text = "กำลังเกาะ: " .. targetP.DisplayName
+        aStatusLbl.TextColor3 = COLOR_ACCENT
+    end
+end
+
+stopSpecBtn.MouseButton1Click:Connect(stopSpectate)
+stopAttachBtn.MouseButton1Click:Connect(stopAttach)
+aStopBtn.MouseButton1Click:Connect(stopAttach)
+
+local function updatePlayerList()
+    for _, item in pairs(playerRows) do safeDestroy(item) end
+    playerRows = {}
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then
+            local card = Instance.new("Frame")
+            card.Size = UDim2.new(1, 0, 0, 36)
+            card.BackgroundColor3 = COLOR_CARD
+            card.BackgroundTransparency = 0.2
+            card.Parent = scroll
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+            applyStroke(card, COLOR_BORDER_DIM, 1, 0.6)
+
+            local pLbl = Instance.new("TextLabel")
+            pLbl.Size = UDim2.new(0.48, 0, 1, 0)
+            pLbl.Position = UDim2.new(0, 8, 0, 0)
+            pLbl.BackgroundTransparency = 1
+            pLbl.Text = p.DisplayName
+            pLbl.TextColor3 = COLOR_TEXT
+            pLbl.Font = Enum.Font.GothamMedium
+            pLbl.TextSize = 11
+            pLbl.TextXAlignment = Enum.TextXAlignment.Left
+            pLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            pLbl.Parent = card
+
+            local specBtn = Instance.new("TextButton")
+            specBtn.Size = UDim2.new(0.22, 0, 0, 22)
+            specBtn.Position = UDim2.new(0.50, 0, 0.5, -11)
+            specBtn.BackgroundColor3 = COLOR_OFF
+            specBtn.Text = "ส่อง"
+            specBtn.TextColor3 = COLOR_ACCENT
+            specBtn.Font = Enum.Font.GothamBold
+            specBtn.TextSize = 10
+            specBtn.Parent = card
+            Instance.new("UICorner", specBtn).CornerRadius = UDim.new(0, 5)
+
+            local attBtn = Instance.new("TextButton")
+            attBtn.Size = UDim2.new(0.24, 0, 0, 22)
+            attBtn.Position = UDim2.new(0.74, 0, 0.5, -11)
+            attBtn.BackgroundColor3 = COLOR_OFF
+            attBtn.Text = "เกาะ"
+            attBtn.TextColor3 = COLOR_ACCENT
+            attBtn.Font = Enum.Font.GothamBold
+            attBtn.TextSize = 10
+            attBtn.Parent = card
+            Instance.new("UICorner", attBtn).CornerRadius = UDim.new(0, 5)
+
+            specBtn.MouseButton1Click:Connect(function()
+                if p.Character and p.Character:FindFirstChild("Humanoid") then
+                    spectateTarget = p
+                    spectateEnabled = true
+                    workspace.CurrentCamera.CameraSubject = p.Character.Humanoid
+                end
+            end)
+
+            attBtn.MouseButton1Click:Connect(function() startAttach(p) end)
+
+            table.insert(playerRows, card)
+        end
+    end
+end
+
+refreshListBtn.MouseButton1Click:Connect(updatePlayerList)
+checkBtn.MouseButton1Click:Connect(function()
+    checkMenu.Visible = not checkMenu.Visible
+    if checkMenu.Visible then updatePlayerList() end
+end)
+cCloseBtn.MouseButton1Click:Connect(function() checkMenu.Visible = false end)
+
 toggleBtn.MouseButton1Click:Connect(function()
     main.Visible = not main.Visible
 end)
 
--- Infinite Jump Logic
-addConn(UserInputService.JumpRequest:Connect(function()
-    if infJumpEnabled and humanoid then
-        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+closeBtn.MouseButton1Click:Connect(function()
+    main.Visible = false
+end)
+
+-- ====================================================
+-- 🔴 Render Loop (NameTag / Attach / Camera Guard)
+-- ====================================================
+addConn(RunService.RenderStepped:Connect(function()
+    if not scriptAlive then return end
+
+    if nameEnabled and rootPart then
+        for targetP, data in pairs(nameObjects) do
+            if targetP.Character and targetP.Character:FindFirstChild("HumanoidRootPart") then
+                local tRoot = targetP.Character.HumanoidRootPart
+                local dist = math.floor((tRoot.Position - rootPart.Position).Magnitude)
+                if dist <= NAME_MAX_DIST then
+                    data.Gui.Enabled = true
+                    data.Gui.Adornee = tRoot
+                    data.Text.Text = string.format("%s [%d m]", targetP.DisplayName, dist)
+                else
+                    data.Gui.Enabled = false
+                end
+            else
+                data.Gui.Enabled = false
+            end
+        end
+    end
+
+    if spectateEnabled then
+        if not spectateTarget or not spectateTarget.Parent
+            or not spectateTarget.Character
+            or not spectateTarget.Character:FindFirstChild("Humanoid") then
+            stopSpectate()
+        end
+    end
+
+    if attachEnabled and attachTarget and attachTarget.Character
+        and attachTarget.Character:FindFirstChild("HumanoidRootPart")
+        and rootPart then
+        local tRoot = attachTarget.Character.HumanoidRootPart
+        applyAntiDeact(character)
+        rootPart.CFrame = tRoot.CFrame * CFrame.new(0, 0, attachDistance)
+        sanitizePhysics(rootPart)
     end
 end))
 
--- Auto-reconnect Character
-player.CharacterAdded:Connect(onCharacterAdded)
+-- ====================================================
+-- 🔴 Keybinds (PC)
+-- ====================================================
+addConn(UserInputService.InputBegan:Connect(function(input, gpe)
+    if waitingForKey then
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            keybinds[waitingForKey].key = input.KeyCode
+            local keyStr = keyToString(input.KeyCode)
+            if waitingForKey == "Speed" then
+                speedKeyBtn.Text = keyStr
+                speedKeyBtn.TextColor3 = COLOR_ACCENT
+            elseif waitingForKey == "Fly" then
+                flyKeyBtn.Text = keyStr
+                flyKeyBtn.TextColor3 = COLOR_ACCENT
+            elseif waitingForKey == "Noclip" then
+                noclipKeyBtn.Text = keyStr
+                noclipKeyBtn.TextColor3 = COLOR_ACCENT
+            end
+            waitingForKey = nil
+        end
+        return
+    end
 
--- Cleanup
-game:BindToClose(function()
-    stopFly()
-    for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
+    if gpe then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+
+    local k = input.KeyCode
+    if k == Enum.KeyCode.W then pcKeys.W = true end
+    if k == Enum.KeyCode.S then pcKeys.S = true end
+    if k == Enum.KeyCode.A then pcKeys.A = true end
+    if k == Enum.KeyCode.D then pcKeys.D = true end
+    if k == Enum.KeyCode.Space then pcKeys.Space = true end
+    if k == Enum.KeyCode.LeftShift then pcKeys.Shift = true end
+
+    for feat, data in pairs(keybinds) do
+        if data.key ~= Enum.KeyCode.Unknown and k == data.key then
+            if feat == "Speed" then
+                if data.mode == "Toggle" then
+                    speedEnabled = not speedEnabled
+                else
+                    speedEnabled = true
+                end
+                updateToggleUI(spdBtn, speedEnabled, "วิ่งไว")
+                if humanoid then humanoid.WalkSpeed = speedEnabled and runSpeed or 16 end
+            elseif feat == "Fly" then
+                if data.mode == "Toggle" then
+                    if flyEnabled then stopFly() else startFly() updateToggleUI(flyBtn, true, "บินได้") end
+                else
+                    startFly()
+                    updateToggleUI(flyBtn, true, "บินได้")
+                end
+            elseif feat == "Noclip" then
+                if data.mode == "Toggle" then
+                    noclipEnabled = not noclipEnabled
+                else
+                    noclipEnabled = true
+                end
+                updateToggleUI(noclipBtn, noclipEnabled)
+                if noclipEnabled then
+                    if noclipConn then noclipConn:Disconnect() end
+                    noclipConn = addConn(RunService.Stepped:Connect(function()
+                        if character then
+                            for _, p in ipairs(character:GetDescendants()) do
+                                if p:IsA("BasePart") then p.CanCollide = false end
+                            end
+                        end
+                    end))
+                else
+                    if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+                end
+            end
+        end
+    end
+end))
+
+addConn(UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    local k = input.KeyCode
+    if k == Enum.KeyCode.W then pcKeys.W = false end
+    if k == Enum.KeyCode.S then pcKeys.S = false end
+    if k == Enum.KeyCode.A then pcKeys.A = false end
+    if k == Enum.KeyCode.D then pcKeys.D = false end
+    if k == Enum.KeyCode.Space then pcKeys.Space = false end
+    if k == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
+
+    for feat, data in pairs(keybinds) do
+        if data.key ~= Enum.KeyCode.Unknown and k == data.key and data.mode == "Hold" then
+            if feat == "Speed" then
+                speedEnabled = false
+                updateToggleUI(spdBtn, false, "วิ่งไว")
+                if humanoid then humanoid.WalkSpeed = 16 end
+            elseif feat == "Fly" then
+                stopFly()
+            elseif feat == "Noclip" then
+                noclipEnabled = false
+                updateToggleUI(noclipBtn, false)
+                if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+            end
+        end
+    end
+end))
+
+-- ====================================================
+-- 🔴 Respawn
+-- ====================================================
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+    task.wait(0.5)
+    if flyEnabled then startFly() end
+    if speedEnabled and humanoid then humanoid.WalkSpeed = runSpeed end
+    if noclipEnabled then
+        if noclipConn then noclipConn:Disconnect() end
+        noclipConn = addConn(RunService.Stepped:Connect(function()
+            for _, p in ipairs(character:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+            end
+        end))
+    end
 end)
 
--- ค้นหาปุ่ม Noclip ในสคริปต์จริงต้องเป็น local variable
--- ถ้าอยากเก็บ Noclip button ไว้ใช้อ้างอิง ให้เปลี่ยนเป็น:
--- local noclipBtn = mkToggle("Noclip", function(state) ... end)
+-- ====================================================
+-- 🔴 ปุ่ม Close Script
+-- ====================================================
+killBtn.MouseButton1Click:Connect(function()
+    scriptAlive = false
+    stopFly()
+    if noclipConn then noclipConn:Disconnect() end
+    stopSpectate()
+    stopAttach()
+    for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
+    for _, obj in pairs(espObjects) do safeDestroy(obj) end
+    for _, data in pairs(nameObjects) do safeDestroy(data.Gui) end
+    safeDestroy(gui)
+end)
+
+game:BindToClose(function()
+    stopFly()
+    if noclipConn then noclipConn:Disconnect() end
+    for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
+end)
