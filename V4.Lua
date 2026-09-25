@@ -1,7 +1,8 @@
 -- ============================================
--- By Boomxico | Golden Glass UI V4.3
+-- By Boomxico | Golden Glass UI V4.6 CLEAN
 -- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
--- + Noclip + Infinite Jump (Fixed) + FPS Boost + Hotkey
+-- + Noclip + FPS Boost + Custom Hotkey
+-- ไม่มี Infinite Jump / ไม่มีโค้ดค้าง / Hotkey ว่างเปล่า
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -17,21 +18,34 @@ local rootPart = character:WaitForChild("HumanoidRootPart")
 local isPC = UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled
 local isMobile = UserInputService.TouchEnabled
 
-local speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
-local noclipEnabled, infJumpEnabled, fpsBoostEnabled = false, false, false
-local runSpeed, flySpeed = 50, 50
-local bodyVel, bodyGyro
+-- ============================================
+-- State Variables
+-- ============================================
+local speedEnabled = false
+local flyEnabled = false
+local espEnabled = false
+local nameEnabled = false
+local noclipEnabled = false
+local fpsBoostEnabled = false
+local runSpeed = 50
+local flySpeed = 50
+local bodyVel = nil
+local bodyGyro = nil
 local isOpen = true
 local scriptAlive = true
 
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
 local pcKeys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
 
+-- ★ Hotkey ว่างเปล่า — ผู้ใช้ต้องตั้งเอง
 local hotkeys = {
     speed = {key = nil, pressed = false},
     fly = {key = nil, pressed = false}
 }
 
+-- ============================================
+-- Character References
+-- ============================================
 local runAnimator = humanoid:FindFirstChildOfClass("Animator")
 if not runAnimator then
     runAnimator = Instance.new("Animator")
@@ -39,16 +53,19 @@ if not runAnimator then
 end
 local runAnimTrack = nil
 
+-- ★ savedState (ไม่มี infJump แล้ว)
 local savedState = {
     speed = false, speedVal = 50,
     fly = false, flyVal = 50,
     esp = false,
     name = false, nameDist = 800,
     noclip = false,
-    infJump = false,
     fpsBoost = false
 }
 
+-- ============================================
+-- Spectate System
+-- ============================================
 local spectateTarget = nil
 local spectateEnabled = false
 local spectateYaw = 0
@@ -58,23 +75,28 @@ local lastMouseX = 0
 local lastMouseY = 0
 local mouseDown = false
 
+-- ============================================
+-- Constants
+-- ============================================
 local MAX_SPEED = 200
 local MAX_FLY = 300
 local lastToggleTime = 0
 local TOGGLE_COOLDOWN = 0.4
 local NAME_MAX_DIST = 800
 
-local espObjects, nameObjects = {}, {}
+-- ============================================
+-- Storage
+-- ============================================
+local espObjects = {}
+local nameObjects = {}
 local nameData = {}
 local playerRows = {}
 local noclipConnection = nil
-local infJumpConnection = nil
 local fpsBoostBackup = {}
 local noclipBusy = false
-local lastJumpTime = 0
 
 -- ============================================
--- สีหลัก
+-- Colors
 -- ============================================
 local COLOR_BG = Color3.fromRGB(8, 8, 10)
 local COLOR_BG_LIGHT = Color3.fromRGB(22, 22, 28)
@@ -118,13 +140,14 @@ task.spawn(function()
 end)
 
 -- ============================================
--- UI หลัก
+-- Main UI
 -- ============================================
 local gui = Instance.new("ScreenGui")
 gui.Name = "ByBoomMenu"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
+-- Toggle Button
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0, 55, 0, 55)
 toggleBtn.Position = UDim2.new(0, 20, 0, 100)
@@ -142,8 +165,9 @@ toggleBtn.Parent = gui
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
 addGlow(toggleBtn, 0.5, true)
 
+-- Main Frame
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 270, 0, 650)
+main.Size = UDim2.new(0, 270, 0, 570)
 main.Position = UDim2.new(0, 20, 0, 165)
 main.BackgroundColor3 = COLOR_BG
 main.BackgroundTransparency = 0.4
@@ -153,6 +177,7 @@ main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 18)
 addGlow(main, 0.7, false)
 
+-- Top Line
 local topLine = Instance.new("Frame")
 topLine.Size = UDim2.new(1, -30, 0, 2)
 topLine.Position = UDim2.new(0, 15, 0, 0)
@@ -161,6 +186,7 @@ topLine.BorderSizePixel = 0
 topLine.Parent = main
 Instance.new("UICorner", topLine).CornerRadius = UDim.new(1, 0)
 
+-- Title
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 0, 42)
 title.Position = UDim2.new(0, 10, 0, 12)
@@ -179,6 +205,7 @@ titleGlow.Thickness = 1
 titleGlow.Transparency = 0.5
 table.insert(glowObjects, {stroke = titleGlow, base = 0.5, title = true})
 
+-- Divider
 local divider = Instance.new("Frame")
 divider.Size = UDim2.new(1, -30, 0, 1)
 divider.Position = UDim2.new(0, 15, 0, 58)
@@ -187,6 +214,9 @@ divider.BackgroundTransparency = 0.5
 divider.BorderSizePixel = 0
 divider.Parent = main
 
+-- ============================================
+-- UI Helpers
+-- ============================================
 local function mkBtn(y, labelText, fullWidth)
     local btn = Instance.new("TextButton")
     if fullWidth then
@@ -228,14 +258,19 @@ local function mkBox(y, defaultVal)
     return box
 end
 
-local spdBtn = mkBtn(0.11, "วิ่งไว: ปิด")
-local spdBox = mkBox(0.11, "50")
-local flyBtn = mkBtn(0.18, "บินได้: ปิด")
-local flyBox = mkBox(0.18, "50")
+-- ============================================
+-- Main Buttons
+-- ============================================
+local spdBtn = mkBtn(0.13, "วิ่งไว: ปิด")
+local spdBox = mkBox(0.13, "50")
 
+local flyBtn = mkBtn(0.21, "บินได้: ปิด")
+local flyBox = mkBox(0.21, "50")
+
+-- Hotkey Row
 local hotkeyRow = Instance.new("Frame")
 hotkeyRow.Size = UDim2.new(0.9, 0, 0, 28)
-hotkeyRow.Position = UDim2.new(0.05, 0, 0.25, 0)
+hotkeyRow.Position = UDim2.new(0.05, 0, 0.29, 0)
 hotkeyRow.BackgroundTransparency = 1
 hotkeyRow.Parent = main
 
@@ -274,15 +309,14 @@ hotkeyClearBtn.TextSize = 11
 hotkeyClearBtn.Parent = hotkeyRow
 Instance.new("UICorner", hotkeyClearBtn).CornerRadius = UDim.new(0, 8)
 
-local espBtn = mkBtn(0.32, "มองทะลุ: ปิด")
-local nameBtn = mkBtn(0.39, "เห็นชื่อ: ปิด")
-local infJumpBtn = mkBtn(0.46, "กระโดดไม่จำกัด: ปิด")
+local espBtn = mkBtn(0.37, "มองทะลุ: ปิด")
+local nameBtn = mkBtn(0.45, "เห็นชื่อ: ปิด")
 local noclipBtn = mkBtn(0.53, "Noclip: ปิด")
-local fpsBoostBtn = mkBtn(0.60, "FPS Boost: ปิด")
+local fpsBoostBtn = mkBtn(0.61, "FPS Boost: ปิด")
 
 local distLbl = Instance.new("TextLabel")
 distLbl.Size = UDim2.new(0.55, 0, 0, 34)
-distLbl.Position = UDim2.new(0.05, 0, 0.67, 0)
+distLbl.Position = UDim2.new(0.05, 0, 0.69, 0)
 distLbl.BackgroundColor3 = COLOR_BG_LIGHT
 distLbl.BackgroundTransparency = 0.5
 distLbl.Text = "ระยะชื่อ"
@@ -295,10 +329,10 @@ distLbl.Parent = main
 Instance.new("UICorner", distLbl).CornerRadius = UDim.new(0, 10)
 addGlow(distLbl, 0.7, false)
 
-local distBox = mkBox(0.67, "800")
+local distBox = mkBox(0.69, "800")
 
-local openListBtn = mkBtn(0.76, "เปิดเมนูรายชื่อ", true)
-local killBtn = mkBtn(0.83, "ปิดสคริปต์ทั้งหมด", true)
+local openListBtn = mkBtn(0.78, "เปิดเมนูรายชื่อ", true)
+local killBtn = mkBtn(0.86, "ปิดสคริปต์ทั้งหมด", true)
 killBtn.BackgroundColor3 = COLOR_DANGER_BG
 killBtn.BackgroundTransparency = 0.3
 killBtn.TextColor3 = Color3.fromRGB(255, 130, 130)
@@ -308,11 +342,11 @@ killStroke.Color = Color3.fromRGB(255, 60, 60)
 killStroke.Thickness = 1.5
 killStroke.Transparency = 0.4
 
-local closeBtn = mkBtn(0.90, "ซ่อนเมนู", true)
+local closeBtn = mkBtn(0.93, "ซ่อนเมนู", true)
 closeBtn.TextColor3 = COLOR_TEXT_DIM
 
 -- ============================================
--- D-Pad บิน
+-- D-Pad (Flight)
 -- ============================================
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
@@ -356,10 +390,12 @@ end
 bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F")
 
 -- ============================================
--- Input PC
+-- Input Handling (Single Listener)
 -- ============================================
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
+    
+    -- Movement keys
     if input.KeyCode == Enum.KeyCode.W then pcKeys.W = true end
     if input.KeyCode == Enum.KeyCode.A then pcKeys.A = true end
     if input.KeyCode == Enum.KeyCode.S then pcKeys.S = true end
@@ -367,6 +403,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = true end
     if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = true end
     
+    -- Noclip: Ctrl + X
     if input.KeyCode == Enum.KeyCode.X 
        and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
         if noclipBusy then return end
@@ -380,19 +417,58 @@ UserInputService.InputBegan:Connect(function(input, gp)
         task.wait(0.05)
         noclipBusy = false
     end
+    
+    -- Hotkey: Speed (เช็ค key ~= nil ก่อน)
+    if hotkeys.speed.key ~= nil and input.KeyCode == hotkeys.speed.key then
+        if not hotkeys.speed.pressed then
+            hotkeys.speed.pressed = true
+            if canToggle() then
+                speedEnabled = not speedEnabled
+                spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
+                spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
+                savedState.speed = speedEnabled
+                savedState.speedVal = runSpeed
+                if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
+            end
+        end
+    end
+    
+    -- Hotkey: Fly (เช็ค key ~= nil ก่อน)
+    if hotkeys.fly.key ~= nil and input.KeyCode == hotkeys.fly.key then
+        if not hotkeys.fly.pressed then
+            hotkeys.fly.pressed = true
+            if canToggle() then
+                flyEnabled = not flyEnabled
+                flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
+                flyBtn.BackgroundColor3 = flyEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
+                savedState.fly = flyEnabled
+                savedState.flyVal = flySpeed
+                if flyEnabled then startFly() else stopFly() end
+            end
+        end
+    end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
+    -- Movement keys
     if input.KeyCode == Enum.KeyCode.W then pcKeys.W = false end
     if input.KeyCode == Enum.KeyCode.A then pcKeys.A = false end
     if input.KeyCode == Enum.KeyCode.S then pcKeys.S = false end
     if input.KeyCode == Enum.KeyCode.D then pcKeys.D = false end
     if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = false end
     if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
+    
+    -- Hotkey release
+    if hotkeys.speed.key ~= nil and input.KeyCode == hotkeys.speed.key then
+        hotkeys.speed.pressed = false
+    end
+    if hotkeys.fly.key ~= nil and input.KeyCode == hotkeys.fly.key then
+        hotkeys.fly.pressed = false
+    end
 end)
 
 -- ============================================
--- เมนูรายชื่อ
+-- Player List Menu
 -- ============================================
 local checkMenu = Instance.new("Frame")
 checkMenu.Size = UDim2.new(0, 280, 0, 410)
@@ -479,7 +555,7 @@ cCloseBtn.Parent = checkMenu
 Instance.new("UICorner", cCloseBtn).CornerRadius = UDim.new(0, 10)
 
 -- ============================================
--- Popup Hotkey
+-- Hotkey Popup
 -- ============================================
 local hotkeyPopup = Instance.new("Frame")
 hotkeyPopup.Size = UDim2.new(0, 260, 0, 200)
@@ -543,7 +619,7 @@ hpKeyBox.Position = UDim2.new(0.35, 0, 0, 68)
 hpKeyBox.BackgroundColor3 = COLOR_BG_LIGHT
 hpKeyBox.BackgroundTransparency = 0.4
 hpKeyBox.Text = ""
-hpKeyBox.PlaceholderText = "เช่น Q, F, X, +, -"
+hpKeyBox.PlaceholderText = "Q / F / X / + / - / 1-9"
 hpKeyBox.TextColor3 = COLOR_ACCENT
 hpKeyBox.Font = Enum.Font.GothamBold
 hpKeyBox.TextSize = 13
@@ -584,14 +660,12 @@ local function openHotkeyPopup(target)
     hotkeyPopup.Visible = true
 end
 
-hotkeySpdBtn.MouseButton1Click:Connect(function()
-    openHotkeyPopup("speed")
-end)
+hotkeySpdBtn.MouseButton1Click:Connect(function() openHotkeyPopup("speed") end)
+hotkeyFlyBtn.MouseButton1Click:Connect(function() openHotkeyPopup("fly") end)
 
-hotkeyFlyBtn.MouseButton1Click:Connect(function()
-    openHotkeyPopup("fly")
-end)
-
+-- ============================================
+-- Numpad Map
+-- ============================================
 local numpadMap = {
     ["+"] = "KeypadPlus",
     ["-"] = "KeypadMinus",
@@ -613,9 +687,11 @@ local numpadMap = {
 hpSaveBtn.MouseButton1Click:Connect(function()
     if not hotkeyEditTarget then return end
     local raw = string.gsub(hpKeyBox.Text, "%s", "")
+    
     if raw == "" then
         hotkeys[hotkeyEditTarget].key = nil
         hotkeyPopup.Visible = false
+        print("[Boom] Hotkey cleared:", hotkeyEditTarget)
         return
     end
     
@@ -624,6 +700,8 @@ hpSaveBtn.MouseButton1Click:Connect(function()
     
     if numpadMap[raw] then
         keyCode = Enum.KeyCode[numpadMap[raw]]
+    elseif numpadMap[text] then
+        keyCode = Enum.KeyCode[numpadMap[text]]
     else
         local ok, kc = pcall(function() return Enum.KeyCode[text] end)
         if ok then keyCode = kc end
@@ -634,8 +712,8 @@ hpSaveBtn.MouseButton1Click:Connect(function()
         hotkeyPopup.Visible = false
         print("[Boom] Hotkey set:", hotkeyEditTarget, "=", keyCode.Name)
     else
-        hpTarget.Text = "ปุ่มไม่ถูกต้อง!"
-        task.wait(1.5)
+        hpTarget.Text = "ปุ่มไม่ถูกต้อง! ลอง +/-/*///Q/F/X"
+        task.wait(2)
         hpTarget.Text = "Target: " .. (hotkeyEditTarget == "speed" and "วิ่งไว" or "บินได้")
     end
 end)
@@ -647,11 +725,11 @@ end)
 hotkeyClearBtn.MouseButton1Click:Connect(function()
     hotkeys.speed.key = nil
     hotkeys.fly.key = nil
-    hotkeyPopup.Visible = false
+    hotkeyPopup.Visible = false    print("[Boom] All hotkeys cleared")
 end)
 
 -- ============================================
--- Helper
+-- Helper Functions
 -- ============================================
 local function canToggle()
     local now = tick()
@@ -666,13 +744,8 @@ local function clamp(v, minV, maxV)
     return v
 end
 
-toggleBtn.MouseButton1Click:Connect(function()
-    isOpen = not isOpen
-    main.Visible = isOpen
-end)
-
 -- ============================================
--- Animation
+-- Animation Loader
 -- ============================================
 local function getGameRunTrack()
     if not runAnimator then return nil end
@@ -706,7 +779,7 @@ local function getGameRunTrack()
 end
 
 -- ============================================
--- Noclip
+-- Noclip Functions
 -- ============================================
 function enableNoclip()
     if noclipConnection then return end
@@ -746,62 +819,6 @@ noclipBtn.MouseButton1Click:Connect(function()
     if noclipEnabled then enableNoclip() else disableNoclip() end
     task.wait(0.05)
     noclipBusy = false
-end)
-
--- ============================================
--- ★ Infinite Jump (Fixed)
--- ============================================
-function enableInfJump()
-    if infJumpConnection then return end
-    infJumpConnection = UserInputService.JumpRequest:Connect(function()
-        if not infJumpEnabled then return end
-        if not humanoid or humanoid.Parent ~= character then return end
-        if flyEnabled then return end
-        
-        local now = tick()
-        if now - lastJumpTime < 0.1 then return end
-        lastJumpTime = now
-        
-        task.wait()
-        
-        if humanoid and humanoid.Parent == character then
-            pcall(function()
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end)
-        end
-    end)
-end
-
-function disableInfJump()
-    if infJumpConnection then
-        infJumpConnection:Disconnect()
-        infJumpConnection = nil
-    end
-    if humanoid and humanoid.Parent == character then
-        pcall(function()
-            if humanoid:GetState() == Enum.HumanoidStateType.Jumping then
-                humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-            end
-        end)
-    end
-end
-
-infJumpBtn.MouseButton1Click:Connect(function()
-    infJumpEnabled = not infJumpEnabled
-    infJumpBtn.Text = infJumpEnabled and "กระโดดไม่จำกัด: เปิด" or "กระโดดไม่จำกัด: ปิด"
-    infJumpBtn.BackgroundColor3 = infJumpEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
-    savedState.infJump = infJumpEnabled
-    
-    if infJumpEnabled then
-        enableInfJump()
-    else
-        disableInfJump()
-        if humanoid and humanoid.Parent == character then
-            pcall(function()
-                humanoid:ChangeState(Enum.HumanoidStateType.Running)
-            end)
-        end
-    end
 end)
 
 -- ============================================
@@ -869,15 +886,11 @@ fpsBoostBtn.MouseButton1Click:Connect(function()
     fpsBoostBtn.Text = fpsBoostEnabled and "FPS Boost: เปิด" or "FPS Boost: ปิด"
     fpsBoostBtn.BackgroundColor3 = fpsBoostEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
     savedState.fpsBoost = fpsBoostEnabled
-    if fpsBoostEnabled then
-        enableFPSBoost()
-    else
-        disableFPSBoost()
-    end
+    if fpsBoostEnabled then enableFPSBoost() else disableFPSBoost() end
 end)
 
 -- ============================================
--- Toggle Functions
+-- Speed Function
 -- ============================================
 local function toggleSpeed()
     if not canToggle() then return end
@@ -886,34 +899,9 @@ local function toggleSpeed()
     spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
     savedState.speed = speedEnabled
     savedState.speedVal = runSpeed
-    
-    if speedEnabled and humanoid and humanoid.Parent == character then
-        pcall(function()
-            local st = humanoid:GetState()
-            if st == Enum.HumanoidStateType.Jumping 
-               or st == Enum.HumanoidStateType.Freefall then
-                humanoid:ChangeState(Enum.HumanoidStateType.Running)
-            end
-        end)
-        humanoid.WalkSpeed = runSpeed
-    elseif not speedEnabled and humanoid and humanoid.Parent then
-        humanoid.WalkSpeed = 16
-    end
+    if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
 end
 
-local function toggleFly()
-    if not canToggle() then return end
-    flyEnabled = not flyEnabled
-    flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
-    flyBtn.BackgroundColor3 = flyEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
-    savedState.fly = flyEnabled
-    savedState.flyVal = flySpeed
-    if flyEnabled then startFly() else stopFly() end
-end
-
--- ============================================
--- วิ่งไว
--- ============================================
 spdBtn.MouseButton1Click:Connect(toggleSpeed)
 
 spdBox.FocusLost:Connect(function()
@@ -934,7 +922,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ============================================
--- บิน
+-- Fly Function
 -- ============================================
 function startFly()
     if bodyVel then bodyVel:Destroy() end
@@ -981,6 +969,16 @@ function stopFly()
     end
     pad.Visible = false
     for k in pairs(dirs) do dirs[k] = false end
+end
+
+local function toggleFly()
+    if not canToggle() then return end
+    flyEnabled = not flyEnabled
+    flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
+    flyBtn.BackgroundColor3 = flyEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
+    savedState.fly = flyEnabled
+    savedState.flyVal = flySpeed
+    if flyEnabled then startFly() else stopFly() end
 end
 
 flyBtn.MouseButton1Click:Connect(toggleFly)
@@ -1035,39 +1033,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ============================================
--- Hotkey Listener
--- ============================================
-if isPC then
-    UserInputService.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        
-        if hotkeys.speed.key and input.KeyCode == hotkeys.speed.key then
-            if not hotkeys.speed.pressed then
-                hotkeys.speed.pressed = true
-                toggleSpeed()
-            end
-        end
-        
-        if hotkeys.fly.key and input.KeyCode == hotkeys.fly.key then
-            if not hotkeys.fly.pressed then
-                hotkeys.fly.pressed = true
-                toggleFly()
-            end
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if hotkeys.speed.key and input.KeyCode == hotkeys.speed.key then
-            hotkeys.speed.pressed = false
-        end
-        if hotkeys.fly.key and input.KeyCode == hotkeys.fly.key then
-            hotkeys.fly.pressed = false
-        end
-    end)
-end
-
--- ============================================
--- มองทะลุ
+-- ESP
 -- ============================================
 local function clearESP()
     for _, obj in pairs(espObjects) do if obj then obj:Destroy() end end
@@ -1106,7 +1072,7 @@ espBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- เห็นชื่อ
+-- Name Tags
 -- ============================================
 local function clearNames()
     for _, obj in pairs(nameObjects) do if obj then obj:Destroy() end end
@@ -1214,7 +1180,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ============================================
--- ส่องกล้อง
+-- Spectate
 -- ============================================
 local function stopSpectate()
     spectateEnabled = false
@@ -1331,7 +1297,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- ============================================
--- รายชื่อผู้เล่น
+-- Player List Refresh
 -- ============================================
 local function refreshPlayerList()
     for _, data in pairs(playerRows) do
@@ -1453,6 +1419,14 @@ local function refreshPlayerList()
     print("[Boom] Player list refreshed:", count, "players")
 end
 
+-- ============================================
+-- UI Event Bindings
+-- ============================================
+toggleBtn.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    main.Visible = isOpen
+end)
+
 openListBtn.MouseButton1Click:Connect(function()
     checkMenu.Visible = not checkMenu.Visible
     if checkMenu.Visible then
@@ -1461,6 +1435,21 @@ openListBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+cCloseBtn.MouseButton1Click:Connect(function()
+    checkMenu.Visible = false
+end)
+
+stopSpecBtn.MouseButton1Click:Connect(stopSpectate)
+
+closeBtn.MouseButton1Click:Connect(function()
+    main.Visible = false
+    isOpen = false
+end)
+
+-- ============================================
+-- Background Loops
+-- ============================================
+-- Auto-refresh player list
 task.spawn(function()
     while scriptAlive do
         task.wait(2)
@@ -1468,6 +1457,7 @@ task.spawn(function()
     end
 end)
 
+-- Distance updater
 task.spawn(function()
     while scriptAlive do
         task.wait(0.5)
@@ -1487,6 +1477,7 @@ task.spawn(function()
     end
 end)
 
+-- Spectate validator
 task.spawn(function()
     while scriptAlive do
         task.wait(0.5)
@@ -1500,16 +1491,14 @@ task.spawn(function()
     end
 end)
 
-cCloseBtn.MouseButton1Click:Connect(function()
-    checkMenu.Visible = false
-end)
-
-stopSpecBtn.MouseButton1Click:Connect(stopSpectate)
-
+-- ============================================
+-- Player Join/Leave
+-- ============================================
 Players.PlayerAdded:Connect(function()
     task.wait(0.5)
     if checkMenu.Visible then refreshPlayerList() end
 end)
+
 Players.PlayerRemoving:Connect(function(p)
     task.wait(0.3)
     if spectateTarget == p then stopSpectate() end
@@ -1524,7 +1513,11 @@ Players.PlayerAdded:Connect(function(p)
         if nameEnabled then applyName(c, p.Name) end
     end)
 end)
-Players.PlayerRemoving:Connect(function() refreshESP(); refreshNames() end)
+
+Players.PlayerRemoving:Connect(function()
+    refreshESP()
+    refreshNames()
+end)
 
 for _, p in pairs(Players:GetPlayers()) do
     if p ~= player then
@@ -1538,40 +1531,41 @@ for _, p in pairs(Players:GetPlayers()) do
 end
 
 -- ============================================
--- ปุ่มปิดสคริปต์
+-- Kill Script
 -- ============================================
 local function killScript()
     scriptAlive = false
-    speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
-    noclipEnabled, infJumpEnabled = false, false
+    speedEnabled = false
+    flyEnabled = false
+    espEnabled = false
+    nameEnabled = false
+    noclipEnabled = false
+    
     if fpsBoostEnabled then
         fpsBoostEnabled = false
         disableFPSBoost()
     end
+    
     stopFly()
     stopSpectate()
     disableNoclip()
-    disableInfJump()
     clearESP()
     clearNames()
+    
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
         humanoid.WalkSpeed = 16
         humanoid.JumpPower = 50
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
+    
     if gui then gui:Destroy() end
 end
 
 killBtn.MouseButton1Click:Connect(killScript)
 
-closeBtn.MouseButton1Click:Connect(function()
-    main.Visible = false
-    isOpen = false
-end)
-
 -- ============================================
--- เกิดใหม่ — คืนค่าสถานะ
+-- Character Respawn
 -- ============================================
 player.CharacterAdded:Connect(function(nc)
     character = nc
@@ -1591,6 +1585,7 @@ player.CharacterAdded:Connect(function(nc)
     task.wait(1)
     if not scriptAlive then return end
 
+    -- Restore Speed
     if savedState.speed then
         speedEnabled = true
         runSpeed = savedState.speedVal
@@ -1605,6 +1600,7 @@ player.CharacterAdded:Connect(function(nc)
         humanoid.WalkSpeed = 16
     end
 
+    -- Restore Fly
     if savedState.fly then
         flyEnabled = true
         flySpeed = savedState.flyVal
@@ -1619,6 +1615,7 @@ player.CharacterAdded:Connect(function(nc)
         pad.Visible = false
     end
 
+    -- Restore ESP
     if savedState.esp then
         espEnabled = true
         espBtn.Text = "มองทะลุ: เปิด"
@@ -1630,6 +1627,7 @@ player.CharacterAdded:Connect(function(nc)
         espBtn.BackgroundColor3 = COLOR_BG_LIGHT
     end
 
+    -- Restore Name
     if savedState.name then
         nameEnabled = true
         NAME_MAX_DIST = savedState.nameDist
@@ -1643,17 +1641,7 @@ player.CharacterAdded:Connect(function(nc)
         nameBtn.BackgroundColor3 = COLOR_BG_LIGHT
     end
 
-    if savedState.infJump then
-        infJumpEnabled = true
-        infJumpBtn.Text = "กระโดดไม่จำกัด: เปิด"
-        infJumpBtn.BackgroundColor3 = COLOR_ACTIVE_BG
-        enableInfJump()
-    else
-        infJumpEnabled = false
-        infJumpBtn.Text = "กระโดดไม่จำกัด: ปิด"
-        infJumpBtn.BackgroundColor3 = COLOR_BG_LIGHT
-    end
-
+    -- Restore Noclip
     if savedState.noclip then
         noclipEnabled = true
         noclipBtn.Text = "Noclip: เปิด"
@@ -1665,6 +1653,7 @@ player.CharacterAdded:Connect(function(nc)
         noclipBtn.BackgroundColor3 = COLOR_BG_LIGHT
     end
 
+    -- Restore FPS Boost
     if savedState.fpsBoost then
         fpsBoostEnabled = true
         fpsBoostBtn.Text = "FPS Boost: เปิด"
@@ -1679,4 +1668,4 @@ player.CharacterAdded:Connect(function(nc)
     for k in pairs(dirs) do dirs[k] = false end
 end)
 
-print("Boom script V4.3 loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
+print("Boom script V4.6 CLEAN loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
