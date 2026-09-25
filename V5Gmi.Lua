@@ -1,20 +1,53 @@
 -- ============================================
--- By Boomxico | Modern Dark Crimson UI (v3.0 FIXED)
+-- By Boomxico | Modern Dark Crimson UI (v3.1 ROBUST)
 -- Single File | Run Ready | Fly Working
 -- ============================================
 
-if not game:IsLoaded() then game.Loaded:Wait() end
+-- === DEBUG: บอกว่าเริ่มโหลด ===
+print("[BoomMenu] เริ่มโหลด...")
 
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Lighting         = game:GetService("Lighting")
-local Workspace        = game:GetService("Workspace")
+if not game:IsLoaded() then
+    print("[BoomMenu] รอเกมโหลด...")
+    game.Loaded:Wait()
+end
+print("[BoomMenu] เกมโหลดแล้ว")
 
+-- === SERVICES ===
+local Players, RunService, UserInputService, Lighting, Workspace
+pcall(function()
+    Players          = game:GetService("Players")
+    RunService       = game:GetService("RunService")
+    UserInputService = game:GetService("UserInputService")
+    Lighting         = game:GetService("Lighting")
+    Workspace        = game:GetService("Workspace")
+end)
+if not Players then
+    warn("[BoomMenu] ❌ ไม่สามารถเข้าถึง Services ได้")
+    return
+end
+print("[BoomMenu] Services OK")
+
+-- === PLAYER ===
 local player = Players.LocalPlayer
+if not player then
+    warn("[BoomMenu] ❌ LocalPlayer หาย")
+    return
+end
+print("[BoomMenu] Player: " .. player.Name)
+
 local character = player.Character or player.CharacterAdded:Wait()
-local humanoid  = character:WaitForChild("Humanoid")
-local rootPart  = character:WaitForChild("HumanoidRootPart")
+local humanoid  = character:WaitForChild("Humanoid", 10)
+local rootPart  = character:WaitForChild("HumanoidRootPart", 10)
+
+if not humanoid then
+    warn("[BoomMenu] ❌ Humanoid หาย")
+    return
+end
+if not rootPart then
+    warn("[BoomMenu] ❌ HumanoidRootPart หาย")
+    return
+end
+print("[BoomMenu] Character OK")
 
 local isMobile = UserInputService.TouchEnabled
 
@@ -86,7 +119,8 @@ local function applyStroke(parent, color, thickness, transparency)
     return stroke
 end
 
--- ===================== FLY SYSTEM (FIXED v3) =====================
+-- ===================== FLY =====================
+local flyBtn  -- forward declare
 local function applyFlyProtection()
     if not humanoid or not humanoid.Parent then return end
     pcall(function()
@@ -198,11 +232,18 @@ local function startFly()
 end
 
 -- ===================== GUI =====================
+local playerGui = player:WaitForChild("PlayerGui", 10)
+if not playerGui then
+    warn("[BoomMenu] ❌ PlayerGui หาย")
+    return
+end
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "ByBoomMenu"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = player:WaitForChild("PlayerGui")
+gui.Parent = playerGui
+print("[BoomMenu] GUI สร้างแล้ว")
 
 -- Toggle Button
 local toggleBtn = Instance.new("TextButton")
@@ -243,7 +284,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 0, 40)
 title.Position = UDim2.new(0, 12, 0, 3)
 title.BackgroundTransparency = 1
-title.Text = "BY BOOMXICO (v3.0)"
+title.Text = "BY BOOMXICO (v3.1)"
 title.TextColor3 = COLOR_TEXT
 title.Font = Enum.Font.GothamBold
 title.TextSize = 15
@@ -357,7 +398,9 @@ end
 
 -- ===================== สร้างปุ่ม =====================
 local spdBtn, spdBox = mkRow("วิ่งไว", "50")
-local flyBtn, flyBox = mkRow("บินได้", "50")
+local flyBtnLocal, flyBox = mkRow("บินได้", "50")
+flyBtn = flyBtnLocal  -- assign to forward-declared
+
 local noclipBtn = mkToggle("Noclip")
 local infJumpBtn = mkToggle("Infinite Jump")
 local fullbrightBtn = mkToggle("Fullbright")
@@ -376,6 +419,8 @@ killBtn.Font = Enum.Font.GothamBold
 killBtn.TextSize = 12
 killBtn.Parent = main
 Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 8)
+
+print("[BoomMenu] ปุ่มทั้งหมดสร้างแล้ว")
 
 toggleBtn.MouseButton1Click:Connect(function()
     main.Visible = not main.Visible
@@ -412,6 +457,7 @@ flyBtn.MouseButton1Click:Connect(function()
         if ok then
             flyBtn.Text = "บินได้: เปิด"
             flyBtn.TextColor3 = COLOR_ACCENT
+            print("[BoomMenu] เปิดบิน")
         end
     end
 end)
@@ -654,7 +700,6 @@ if isMobile then
     mkPBtn("→", UDim2.new(1, -52, 0.5, -22), "R")
     mkPBtn("W", UDim2.new(0.5, -22, 0.5, -22), "F")
 
-    -- แสดง pad เมื่อเปิด fly
     flyBtn.MouseButton1Click:Connect(function()
         task.wait(0.1)
         pad.Visible = flyEnabled
@@ -688,6 +733,7 @@ killBtn.MouseButton1Click:Connect(function()
     for _, obj in pairs(espObjects) do safeDestroy(obj) end
     for _, data in pairs(nameObjects) do safeDestroy(data.Gui) end
     safeDestroy(gui)
+    print("[BoomMenu] ปิดสคริปต์")
 end)
 
 game:BindToClose(function()
@@ -696,4 +742,4 @@ game:BindToClose(function()
     for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
 end)
 
-print("[BoomMenu v3.0] โหลดสำเร็จ ✅")
+print("[BoomMenu v3.1] ✅ โหลดสำเร็จ")
