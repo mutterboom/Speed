@@ -1,7 +1,7 @@
 -- ============================================
--- By Boomxico | Golden Glass UI V4.2
+-- By Boomxico | Golden Glass UI V4.3
 -- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
--- + Noclip + Infinite Jump + FPS Boost + Custom Hotkey
+-- + Noclip + Infinite Jump (Fixed) + FPS Boost + Hotkey
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -71,9 +71,10 @@ local noclipConnection = nil
 local infJumpConnection = nil
 local fpsBoostBackup = {}
 local noclipBusy = false
+local lastJumpTime = 0
 
 -- ============================================
--- สีหลัก (Golden Theme)
+-- สีหลัก
 -- ============================================
 local COLOR_BG = Color3.fromRGB(8, 8, 10)
 local COLOR_BG_LIGHT = Color3.fromRGB(22, 22, 28)
@@ -186,9 +187,6 @@ divider.BackgroundTransparency = 0.5
 divider.BorderSizePixel = 0
 divider.Parent = main
 
--- ============================================
--- ฟังก์ชันสร้าง UI
--- ============================================
 local function mkBtn(y, labelText, fullWidth)
     local btn = Instance.new("TextButton")
     if fullWidth then
@@ -230,13 +228,11 @@ local function mkBox(y, defaultVal)
     return box
 end
 
--- แถวที่ 1-2 : วิ่งไว + บินได้
 local spdBtn = mkBtn(0.11, "วิ่งไว: ปิด")
 local spdBox = mkBox(0.11, "50")
 local flyBtn = mkBtn(0.18, "บินได้: ปิด")
 local flyBox = mkBox(0.18, "50")
 
--- แถวที่ 3 : Hotkey
 local hotkeyRow = Instance.new("Frame")
 hotkeyRow.Size = UDim2.new(0.9, 0, 0, 28)
 hotkeyRow.Position = UDim2.new(0.05, 0, 0.25, 0)
@@ -278,7 +274,6 @@ hotkeyClearBtn.TextSize = 11
 hotkeyClearBtn.Parent = hotkeyRow
 Instance.new("UICorner", hotkeyClearBtn).CornerRadius = UDim.new(0, 8)
 
--- แถว 4-8 : ฟีเจอร์หลัก
 local espBtn = mkBtn(0.32, "มองทะลุ: ปิด")
 local nameBtn = mkBtn(0.39, "เห็นชื่อ: ปิด")
 local infJumpBtn = mkBtn(0.46, "กระโดดไม่จำกัด: ปิด")
@@ -484,7 +479,7 @@ cCloseBtn.Parent = checkMenu
 Instance.new("UICorner", cCloseBtn).CornerRadius = UDim.new(0, 10)
 
 -- ============================================
--- Popup ตั้ง Hotkey
+-- Popup Hotkey
 -- ============================================
 local hotkeyPopup = Instance.new("Frame")
 hotkeyPopup.Size = UDim2.new(0, 260, 0, 200)
@@ -597,7 +592,6 @@ hotkeyFlyBtn.MouseButton1Click:Connect(function()
     openHotkeyPopup("fly")
 end)
 
--- ★ Numpad Map
 local numpadMap = {
     ["+"] = "KeypadPlus",
     ["-"] = "KeypadMinus",
@@ -657,7 +651,7 @@ hotkeyClearBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- Helper Functions
+-- Helper
 -- ============================================
 local function canToggle()
     local now = tick()
@@ -678,7 +672,7 @@ toggleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- ดึงอนิเมชั่นวิ่ง
+-- Animation
 -- ============================================
 local function getGameRunTrack()
     if not runAnimator then return nil end
@@ -712,7 +706,7 @@ local function getGameRunTrack()
 end
 
 -- ============================================
--- Noclip System
+-- Noclip
 -- ============================================
 function enableNoclip()
     if noclipConnection then return end
@@ -755,14 +749,25 @@ noclipBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- Infinite Jump System
+-- ★ Infinite Jump (Fixed)
 -- ============================================
 function enableInfJump()
     if infJumpConnection then return end
     infJumpConnection = UserInputService.JumpRequest:Connect(function()
         if not infJumpEnabled then return end
+        if not humanoid or humanoid.Parent ~= character then return end
+        if flyEnabled then return end
+        
+        local now = tick()
+        if now - lastJumpTime < 0.1 then return end
+        lastJumpTime = now
+        
+        task.wait()
+        
         if humanoid and humanoid.Parent == character then
-            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            pcall(function()
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end)
         end
     end)
 end
@@ -772,6 +777,13 @@ function disableInfJump()
         infJumpConnection:Disconnect()
         infJumpConnection = nil
     end
+    if humanoid and humanoid.Parent == character then
+        pcall(function()
+            if humanoid:GetState() == Enum.HumanoidStateType.Jumping then
+                humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+            end
+        end)
+    end
 end
 
 infJumpBtn.MouseButton1Click:Connect(function()
@@ -779,11 +791,21 @@ infJumpBtn.MouseButton1Click:Connect(function()
     infJumpBtn.Text = infJumpEnabled and "กระโดดไม่จำกัด: เปิด" or "กระโดดไม่จำกัด: ปิด"
     infJumpBtn.BackgroundColor3 = infJumpEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
     savedState.infJump = infJumpEnabled
-    if infJumpEnabled then enableInfJump() else disableInfJump() end
+    
+    if infJumpEnabled then
+        enableInfJump()
+    else
+        disableInfJump()
+        if humanoid and humanoid.Parent == character then
+            pcall(function()
+                humanoid:ChangeState(Enum.HumanoidStateType.Running)
+            end)
+        end
+    end
 end)
 
 -- ============================================
--- ★ FPS Boost System
+-- FPS Boost
 -- ============================================
 local function enableFPSBoost()
     if not fpsBoostEnabled then return end
@@ -864,7 +886,19 @@ local function toggleSpeed()
     spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
     savedState.speed = speedEnabled
     savedState.speedVal = runSpeed
-    if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
+    
+    if speedEnabled and humanoid and humanoid.Parent == character then
+        pcall(function()
+            local st = humanoid:GetState()
+            if st == Enum.HumanoidStateType.Jumping 
+               or st == Enum.HumanoidStateType.Freefall then
+                humanoid:ChangeState(Enum.HumanoidStateType.Running)
+            end
+        end)
+        humanoid.WalkSpeed = runSpeed
+    elseif not speedEnabled and humanoid and humanoid.Parent then
+        humanoid.WalkSpeed = 16
+    end
 end
 
 local function toggleFly()
@@ -1618,7 +1652,9 @@ player.CharacterAdded:Connect(function(nc)
         infJumpEnabled = false
         infJumpBtn.Text = "กระโดดไม่จำกัด: ปิด"
         infJumpBtn.BackgroundColor3 = COLOR_BG_LIGHT
-    end    if savedState.noclip then
+    end
+
+    if savedState.noclip then
         noclipEnabled = true
         noclipBtn.Text = "Noclip: เปิด"
         noclipBtn.BackgroundColor3 = COLOR_ACTIVE_BG
@@ -1643,4 +1679,4 @@ player.CharacterAdded:Connect(function(nc)
     for k in pairs(dirs) do dirs[k] = false end
 end)
 
-print("Boom script V4.2 loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
+print("Boom script V4.3 loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
