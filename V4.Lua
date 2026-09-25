@@ -1,6 +1,6 @@
 -- ============================================
--- By Boomxico | Golden Glass UI V4.8
--- ชื่อเงินขาว + UI เลื่อนได้ + Hotkey ใช้งานได้
+-- By Boomxico | Golden Glass UI V4.8.1
+-- Patch: ชื่อขาว-เทา + UI เลื่อนได้ + Hotkey PC Only
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -69,7 +69,7 @@ local fpsBoostBackup = {}
 local noclipBusy = false
 
 -- ============================================
--- Colors (Dark + Gold + Silver)
+-- Colors
 -- ============================================
 local COLOR_BG = Color3.fromRGB(8, 8, 10)
 local COLOR_BG_LIGHT = Color3.fromRGB(22, 22, 28)
@@ -81,8 +81,7 @@ local COLOR_ACCENT = Color3.fromRGB(255, 200, 0)
 local COLOR_GLOW = Color3.fromRGB(255, 230, 100)
 local COLOR_ACTIVE_BG = Color3.fromRGB(120, 90, 0)
 local COLOR_DANGER_BG = Color3.fromRGB(80, 15, 15)
--- ★ สีเงิน-ขาว
-local COLOR_SILVER = Color3.fromRGB(220, 220, 230)
+local COLOR_SILVER = Color3.fromRGB(230, 230, 240)
 local COLOR_SILVER_DIM = Color3.fromRGB(160, 160, 175)
 
 -- ============================================
@@ -156,14 +155,15 @@ toggleBtn.Parent = gui
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
 addGlow(toggleBtn, 0.5, true)
 
--- ★ Main Frame + ScrollingFrame (มือถือเลื่อนได้)
+-- ★ Main Frame (ปิด Active เพื่อให้ ScrollFrame ทำงานบนมือถือ)
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 270, 0, 570)
+main.Size = UDim2.new(0, 270, 0, 500)
 main.Position = UDim2.new(0, 20, 0, 165)
 main.BackgroundColor3 = COLOR_BG
 main.BackgroundTransparency = 0.4
-main.Active = true
-main.Draggable = true
+main.Active = false              -- ★ ปิด Active
+main.Draggable = false           -- ★ ปิดลาก (ใช้ title เป็น handle)
+main.ClipsDescendants = true     -- ★ ตัดส่วนเกิน
 main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 18)
 addGlow(main, 0.7, false)
@@ -176,7 +176,8 @@ topLine.BorderSizePixel = 0
 topLine.Parent = main
 Instance.new("UICorner", topLine).CornerRadius = UDim.new(1, 0)
 
-local title = Instance.new("TextLabel")
+-- ★ Title เป็น drag handle
+local title = Instance.new("TextButton")
 title.Size = UDim2.new(1, -20, 0, 42)
 title.Position = UDim2.new(0, 10, 0, 12)
 title.BackgroundTransparency = 1
@@ -186,7 +187,37 @@ title.TextStrokeTransparency = 0.4
 title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 20
+title.Active = true
 title.Parent = main
+
+-- ★ ลาก main ผ่าน title
+local dragging = false
+local dragStart = nil
+local startPos = nil
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+       or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = main.Position
+    end
+end)
+title.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 
+       or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement 
+                     or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
 
 local titleGlow = Instance.new("UIStroke", title)
 titleGlow.Color = COLOR_GLOW
@@ -194,17 +225,20 @@ titleGlow.Thickness = 1
 titleGlow.Transparency = 0.5
 table.insert(glowObjects, {stroke = titleGlow, base = 0.5, title = true})
 
--- ★ ScrollingFrame ครอบ UI ทั้งหมด
+-- ★ ScrollingFrame รับ touch ได้
 local scrollFrame = Instance.new("ScrollingFrame")
-scrollFrame.Size = UDim2.new(1, 0, 1, -68)
-scrollFrame.Position = UDim2.new(0, 0, 0, 60)
+scrollFrame.Size = UDim2.new(1, 0, 1, -62)
+scrollFrame.Position = UDim2.new(0, 0, 0, 58)
 scrollFrame.BackgroundTransparency = 1
 scrollFrame.BorderSizePixel = 0
-scrollFrame.ScrollBarThickness = 4
+scrollFrame.ScrollBarThickness = 6
 scrollFrame.ScrollBarImageColor3 = COLOR_ACCENT
 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 scrollFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+scrollFrame.ScrollingEnabled = true
+scrollFrame.Active = true
+scrollFrame.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 scrollFrame.Parent = main
 
 local scrollPad = Instance.new("UIPadding")
@@ -212,7 +246,6 @@ scrollPad.PaddingTop = UDim.new(0, 6)
 scrollPad.PaddingBottom = UDim.new(0, 6)
 scrollPad.Parent = scrollFrame
 
--- สร้าง container สำหรับปุ่ม
 local container = Instance.new("Frame")
 container.Size = UDim2.new(1, 0, 0, 0)
 container.BackgroundTransparency = 1
@@ -225,7 +258,7 @@ listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 listLayout.Parent = container
 
 -- ============================================
--- UI Builder
+-- Row Builders
 -- ============================================
 local function mkBtn(labelText)
     local btn = Instance.new("TextButton")
@@ -238,34 +271,13 @@ local function mkBtn(labelText)
     btn.Font = Enum.Font.GothamMedium
     btn.TextSize = 13
     btn.Text = labelText
-    btn.LayoutOrder = #container:GetChildren()
+    btn.LayoutOrder = #container:GetChildren() + 1
     btn.Parent = container
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
     addGlow(btn, 0.7, false)
     return btn
 end
 
-local function mkBox(defaultVal)
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0.3, 0, 0, 36)
-    box.BackgroundColor3 = COLOR_BG_LIGHT
-    box.BackgroundTransparency = 0.5
-    box.Text = defaultVal
-    box.TextColor3 = COLOR_ACCENT
-    box.TextStrokeTransparency = 0.5
-    box.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    box.Font = Enum.Font.GothamBold
-    box.TextSize = 13
-    box.LayoutOrder = #container:GetChildren()
-    box.Parent = container
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 10)
-    addGlow(box, 0.7, false)
-    return box
-end
-
--- ============================================
--- Rows (ใน scroll)
--- ============================================
 -- Row 1: วิ่งไว
 local row1 = Instance.new("Frame")
 row1.Size = UDim2.new(0.9, 0, 0, 36)
@@ -340,11 +352,12 @@ flyBox.Parent = row2
 Instance.new("UICorner", flyBox).CornerRadius = UDim.new(0, 10)
 addGlow(flyBox, 0.7, false)
 
--- Row 3: Hotkey
+-- ★ Row 3: Hotkey (แสดงเฉพาะ PC)
 local hotkeyRow = Instance.new("Frame")
 hotkeyRow.Size = UDim2.new(0.9, 0, 0, 28)
 hotkeyRow.BackgroundTransparency = 1
 hotkeyRow.LayoutOrder = 3
+hotkeyRow.Visible = isPC
 hotkeyRow.Parent = container
 
 local function mkHotkeyBtn(text, xPos)
@@ -382,7 +395,7 @@ hotkeyClearBtn.TextSize = 11
 hotkeyClearBtn.Parent = hotkeyRow
 Instance.new("UICorner", hotkeyClearBtn).CornerRadius = UDim.new(0, 8)
 
--- Buttons (LayoutOrder)
+-- Feature Buttons
 local espBtn = mkBtn("มองทะลุ: ปิด")
 espBtn.LayoutOrder = 4
 local nameBtn = mkBtn("เห็นชื่อ: ปิด")
@@ -429,7 +442,6 @@ distBox.Parent = rowDist
 Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 10)
 addGlow(distBox, 0.7, false)
 
--- Action buttons
 local openListBtn = mkBtn("เปิดเมนูรายชื่อ")
 openListBtn.LayoutOrder = 9
 local killBtn = mkBtn("ปิดสคริปต์ทั้งหมด")
@@ -629,7 +641,7 @@ local function toggleFly()
 end
 
 -- ============================================
--- Input Handling
+-- Input
 -- ============================================
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
@@ -654,17 +666,18 @@ UserInputService.InputBegan:Connect(function(input, gp)
         noclipBusy = false
     end
     
-    if hotkeys.speed.key ~= nil and input.KeyCode == hotkeys.speed.key then
-        if not hotkeys.speed.pressed then
-            hotkeys.speed.pressed = true
-            toggleSpeed()
+    if isPC then
+        if hotkeys.speed.key ~= nil and input.KeyCode == hotkeys.speed.key then
+            if not hotkeys.speed.pressed then
+                hotkeys.speed.pressed = true
+                toggleSpeed()
+            end
         end
-    end
-    
-    if hotkeys.fly.key ~= nil and input.KeyCode == hotkeys.fly.key then
-        if not hotkeys.fly.pressed then
-            hotkeys.fly.pressed = true
-            toggleFly()
+        if hotkeys.fly.key ~= nil and input.KeyCode == hotkeys.fly.key then
+            if not hotkeys.fly.pressed then
+                hotkeys.fly.pressed = true
+                toggleFly()
+            end
         end
     end
 end)
@@ -865,6 +878,7 @@ hpCloseBtn.Parent = hotkeyPopup
 Instance.new("UICorner", hpCloseBtn).CornerRadius = UDim.new(0, 8)
 
 local hotkeyEditTarget = nil
+
 local function openHotkeyPopup(target)
     hotkeyEditTarget = target
     local data = hotkeys[target]
@@ -873,8 +887,18 @@ local function openHotkeyPopup(target)
     hotkeyPopup.Visible = true
 end
 
-hotkeySpdBtn.MouseButton1Click:Connect(function() openHotkeyPopup("speed") end)
-hotkeyFlyBtn.MouseButton1Click:Connect(function() openHotkeyPopup("fly") end)
+-- ★ Hotkey Events (เฉพาะ PC)
+if isPC then
+    hotkeySpdBtn.MouseButton1Click:Connect(function() openHotkeyPopup("speed") end)
+    hotkeyFlyBtn.MouseButton1Click:Connect(function() openHotkeyPopup("fly") end)
+    
+    hotkeyClearBtn.MouseButton1Click:Connect(function()
+        hotkeys.speed.key = nil
+        hotkeys.fly.key = nil
+        hotkeyPopup.Visible = false
+        print("[Boom] All hotkeys cleared")
+    end)
+end
 
 local numpadMap = {
     ["+"] = "KeypadPlus", ["-"] = "KeypadMinus",
@@ -917,13 +941,6 @@ hpSaveBtn.MouseButton1Click:Connect(function()
 end)
 
 hpCloseBtn.MouseButton1Click:Connect(function() hotkeyPopup.Visible = false end)
-
-hotkeyClearBtn.MouseButton1Click:Connect(function()
-    hotkeys.speed.key = nil
-    hotkeys.fly.key = nil
-    hotkeyPopup.Visible = false
-    print("[Boom] All hotkeys cleared")
-end)
 
 -- ============================================
 -- Speed
@@ -1077,7 +1094,7 @@ espBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- ★ Name Tags (เงินขาว)
+-- ★ Name Tags (ขาว-เทา)
 -- ============================================
 local function clearNames()
     for _, obj in pairs(nameObjects) do if obj then obj:Destroy() end end
@@ -1102,10 +1119,9 @@ local function applyName(char, pName)
     lbl.Size = UDim2.new(1, 0, 1, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = pName or "?"
-    -- ★ สีเงินขาว
-    lbl.TextColor3 = COLOR_SILVER
+    lbl.TextColor3 = COLOR_SILVER          -- ★ ขาว-เทา
     lbl.TextStrokeTransparency = 0
-    lbl.TextStrokeColor3 = Color3.fromRGB(40, 40, 50)
+    lbl.TextStrokeColor3 = Color3.fromRGB(40, 40, 50)  -- ★ ขอบเทาเข้ม
     lbl.Font = Enum.Font.GothamBold
     lbl.TextScaled = false
     lbl.TextSize = 14
@@ -1326,13 +1342,13 @@ local function refreshPlayerList()
                     avatar.Image = thumb
                 end
             end)
-            -- ★ ชื่อเป็น ขาว-เทา
+            -- ★ ชื่อ = ขาว-เทา
             local nameLbl = Instance.new("TextLabel")
             nameLbl.Size = UDim2.new(0.42, 0, 0.5, 0)
             nameLbl.Position = UDim2.new(0.14, 0, 0.05, 0)
             nameLbl.BackgroundTransparency = 1
             nameLbl.Text = p.DisplayName
-            nameLbl.TextColor3 = Color3.fromRGB(230, 230, 240)
+            nameLbl.TextColor3 = COLOR_SILVER
             nameLbl.Font = Enum.Font.GothamMedium
             nameLbl.TextSize = 12
             nameLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -1343,7 +1359,7 @@ local function refreshPlayerList()
             userLbl.Position = UDim2.new(0.14, 0, 0.52, 0)
             userLbl.BackgroundTransparency = 1
             userLbl.Text = "@" .. p.Name
-            userLbl.TextColor3 = Color3.fromRGB(150, 150, 160)
+            userLbl.TextColor3 = COLOR_SILVER_DIM
             userLbl.Font = Enum.Font.Gotham
             userLbl.TextSize = 10
             userLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -1437,7 +1453,7 @@ closeBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================
--- Background Loops
+-- Loops
 -- ============================================
 task.spawn(function()
     while scriptAlive do
@@ -1626,4 +1642,4 @@ player.CharacterAdded:Connect(function(nc)
     for k in pairs(dirs) do dirs[k] = false end
 end)
 
-print("Boom script V4.8 loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
+print("Boom script V4.8.1 loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
