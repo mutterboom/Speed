@@ -1,6 +1,6 @@
 -- ============================================
 -- By Boomxico | Dark Red Luxury UI + Anti-Detect
--- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
+-- วิ่งไว (BodyVelocity) + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -19,6 +19,7 @@ local isMobile = UserInputService.TouchEnabled
 local speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
 local runSpeed, flySpeed = 50, 50
 local bodyVel, bodyGyro
+local speedBodyVel = nil  -- ★ BodyVelocity สำหรับวิ่งไว
 local isOpen = true
 local scriptAlive = true
 
@@ -330,7 +331,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- ============================================
--- ★ ปุ่มเช็คชื่อ (P - วงกลม)
+-- ปุ่มเช็คชื่อ (P - วงกลม)
 -- ============================================
 local checkBtn = Instance.new("TextButton")
 checkBtn.Size = UDim2.new(0, 55, 0, 55)
@@ -499,14 +500,20 @@ local function getGameRunTrack()
 end
 
 -- ============================================
--- วิ่งไว
+-- ★ วิ่งไวแบบ BodyVelocity (ไถล - ไม่ทับอนิเมชั่น)
 -- ============================================
 spdBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     speedEnabled = not speedEnabled
     spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
     spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
-    if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
+    if not speedEnabled then
+        if speedBodyVel then
+            speedBodyVel:Destroy()
+            speedBodyVel = nil
+        end
+        if humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
+    end
 end)
 
 spdBox.FocusLost:Connect(function()
@@ -515,11 +522,30 @@ spdBox.FocusLost:Connect(function()
     else spdBox.Text = "50"; runSpeed = 50 end
 end)
 
+-- ★ BodyVelocity วิ่งไว - ใช้ MoveDirection จากจอย/WASD
 RunService.Heartbeat:Connect(function()
     if not scriptAlive then return end
-    if speedEnabled and humanoid and humanoid.Parent == character then
-        local jitter = 1 + (math.random() - 0.5) * 0.04
-        humanoid.WalkSpeed = runSpeed * jitter
+    if speedEnabled and humanoid and humanoid.Parent == character and rootPart.Parent == character then
+        local move = humanoid.MoveDirection
+        if move.Magnitude > 0 then
+            if not speedBodyVel or not speedBodyVel.Parent then
+                speedBodyVel = Instance.new("BodyVelocity")
+                speedBodyVel.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                speedBodyVel.P = 1250
+                speedBodyVel.Parent = rootPart
+            end
+            local jitter = 1 + (math.random() - 0.5) * 0.04
+            speedBodyVel.Velocity = move.Unit * runSpeed * jitter
+        else
+            if speedBodyVel then
+                speedBodyVel.Velocity = Vector3.new(0, 0, 0)
+            end
+        end
+    else
+        if speedBodyVel then
+            speedBodyVel:Destroy()
+            speedBodyVel = nil
+        end
     end
 end)
 
@@ -569,7 +595,7 @@ local function stopFly()
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-        humanoid.WalkSpeed = speedEnabled and runSpeed or 16
+        humanoid.WalkSpeed = 16
     end
     pad.Visible = false
     for k in pairs(dirs) do dirs[k] = false end
@@ -697,7 +723,7 @@ local function applyName(char, pName)
     lbl.Size = UDim2.new(1, 0, 1, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = pName or "?"
-    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)   -- ★ ขาวสว่าง
+    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
     lbl.TextStrokeTransparency = 0
     lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     lbl.Font = Enum.Font.GothamBold
@@ -810,7 +836,7 @@ local function spectatePlayer(targetPlayer)
     spectateDist = 12
 end
 
--- ★ ฟังก์ชัน TP ไปหาผู้เล่น
+-- ฟังก์ชัน TP ไปหาผู้เล่น
 local function teleportToPlayer(targetPlayer)
     if not targetPlayer then return end
     local targetChar = targetPlayer.Character
@@ -921,7 +947,7 @@ local function refreshPlayerList()
             row.Parent = scroll
             Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
-            -- ★ รูปโปรไฟล์
+            -- รูปโปรไฟล์
             local avatar = Instance.new("ImageLabel")
             avatar.Size = UDim2.new(0, 30, 0, 30)
             avatar.Position = UDim2.new(0.02, 0, 0.5, -15)
@@ -935,7 +961,6 @@ local function refreshPlayerList()
             avStroke.Thickness = 1
             avStroke.Transparency = 0.3
 
-            -- ดึงรูปโปรไฟล์ async
             task.spawn(function()
                 local ok, thumb = pcall(function()
                     return Players:GetUserThumbnailAsync(
@@ -949,7 +974,7 @@ local function refreshPlayerList()
                 end
             end)
 
-            -- DisplayName (บรรทัดบน)
+            -- DisplayName
             local nameLbl = Instance.new("TextLabel")
             nameLbl.Size = UDim2.new(0.42, 0, 0.5, 0)
             nameLbl.Position = UDim2.new(0.14, 0, 0.05, 0)
@@ -962,7 +987,7 @@ local function refreshPlayerList()
             nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
             nameLbl.Parent = row
 
-            -- @Username (บรรทัดล่าง)
+            -- @Username
             local userLbl = Instance.new("TextLabel")
             userLbl.Size = UDim2.new(0.42, 0, 0.4, 0)
             userLbl.Position = UDim2.new(0.14, 0, 0.52, 0)
@@ -1061,7 +1086,6 @@ task.spawn(function()
     end
 end)
 
--- ★ เปิด/ปิดเมนูเช็คชื่อ (ไม่ปิด spectate)
 checkBtn.MouseButton1Click:Connect(function()
     checkMenu.Visible = not checkMenu.Visible
     if checkMenu.Visible then
@@ -1069,12 +1093,10 @@ checkBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ★ ปุ่มซ่อนเมนู — แค่ซ่อน ไม่ปิด spectate
 cCloseBtn.MouseButton1Click:Connect(function()
     checkMenu.Visible = false
 end)
 
--- ★ ปุ่มปิดส่องกล้อง — อันเดียวที่ปิด spectate
 stopSpecBtn.MouseButton1Click:Connect(stopSpectate)
 
 Players.PlayerAdded:Connect(function()
@@ -1118,6 +1140,7 @@ local function killScript()
     stopSpectate()
     clearESP()
     clearNames()
+    if speedBodyVel then speedBodyVel:Destroy(); speedBodyVel = nil end
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
         humanoid.WalkSpeed = 16
@@ -1152,6 +1175,7 @@ player.CharacterAdded:Connect(function(nc)
     flyBtn.Text = "บินได้: ปิด"; flyBtn.BackgroundColor3 = COLOR_BG_LIGHT
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
+    if speedBodyVel then speedBodyVel:Destroy(); speedBodyVel = nil end
     pad.Visible = false
     for k in pairs(dirs) do dirs[k] = false end
     task.wait(1)
