@@ -1,6 +1,7 @@
 -- ============================================
 -- By Boomxico | Dark Red Luxury UI + Anti-Detect
--- วิ่งไว (BodyVelocity) + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
+-- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
+-- V3 : กันปุ่มค้าง + อนิเมชั่นวิ่งทำงานปกติ
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -19,14 +20,12 @@ local isMobile = UserInputService.TouchEnabled
 local speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
 local runSpeed, flySpeed = 50, 50
 local bodyVel, bodyGyro
-local speedBodyVel = nil  -- ★ BodyVelocity สำหรับวิ่งไว
 local isOpen = true
 local scriptAlive = true
 
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
 local pcKeys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
 
--- อนิเมชั่นวิ่ง
 local runAnimator = humanoid:FindFirstChildOfClass("Animator")
 if not runAnimator then
     runAnimator = Instance.new("Animator")
@@ -34,7 +33,6 @@ if not runAnimator then
 end
 local runAnimTrack = nil
 
--- ส่องกล้อง
 local spectateTarget = nil
 local spectateEnabled = false
 local spectateYaw = 0
@@ -55,7 +53,7 @@ local nameData = {}
 local playerRows = {}
 
 -- ============================================
--- สีหลัก (Dark Red Luxury)
+-- สีหลัก
 -- ============================================
 local COLOR_BG = Color3.fromRGB(12, 12, 14)
 local COLOR_BG_LIGHT = Color3.fromRGB(22, 22, 26)
@@ -73,7 +71,6 @@ gui.Name = "ByBoomMenu"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- ปุ่มพับเมนูหลัก (B)
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0, 55, 0, 55)
 toggleBtn.Position = UDim2.new(0, 20, 0, 100)
@@ -92,7 +89,6 @@ ts.Color = COLOR_BORDER
 ts.Thickness = 1.5
 ts.Transparency = 0.2
 
--- หน้าต่างหลัก
 local main = Instance.new("Frame")
 main.Size = UDim2.new(0, 260, 0, 400)
 main.Position = UDim2.new(0, 20, 0, 165)
@@ -107,7 +103,6 @@ ms.Color = COLOR_BORDER
 ms.Thickness = 1.5
 ms.Transparency = 0.3
 
--- เส้นคาดบน
 local topLine = Instance.new("Frame")
 topLine.Size = UDim2.new(1, -30, 0, 2)
 topLine.Position = UDim2.new(0, 15, 0, 0)
@@ -116,7 +111,6 @@ topLine.BorderSizePixel = 0
 topLine.Parent = main
 Instance.new("UICorner", topLine).CornerRadius = UDim.new(1, 0)
 
--- หัวข้อ
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 0, 42)
 title.Position = UDim2.new(0, 10, 0, 12)
@@ -127,7 +121,6 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.Parent = main
 
--- เส้นคั่น
 local divider = Instance.new("Frame")
 divider.Size = UDim2.new(1, -30, 0, 1)
 divider.Position = UDim2.new(0, 15, 0, 60)
@@ -136,9 +129,6 @@ divider.BackgroundTransparency = 0.5
 divider.BorderSizePixel = 0
 divider.Parent = main
 
--- ============================================
--- ฟังก์ชันสร้างปุ่ม
--- ============================================
 local function mkRow(y, labelText, defaultVal)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0.52, 0, 0, 34)
@@ -234,7 +224,6 @@ Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 10)
 local dbs = Instance.new("UIStroke", distBox)
 dbs.Color = COLOR_BORDER; dbs.Thickness = 1; dbs.Transparency = 0.4
 
--- ปุ่มปิดสคริปต์
 local killBtn = Instance.new("TextButton")
 killBtn.Size = UDim2.new(0.9, 0, 0, 34)
 killBtn.Position = UDim2.new(0.05, 0, 0.82, 0)
@@ -249,7 +238,6 @@ Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 10)
 local ks = Instance.new("UIStroke", killBtn)
 ks.Color = COLOR_ACCENT; ks.Thickness = 1; ks.Transparency = 0.2
 
--- ปุ่มซ่อนเมนู
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0.9, 0, 0, 34)
 closeBtn.Position = UDim2.new(0.05, 0, 0.92, 0)
@@ -264,9 +252,7 @@ Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 local cbs = Instance.new("UIStroke", closeBtn)
 cbs.Color = Color3.fromRGB(80, 80, 90); cbs.Thickness = 1; cbs.Transparency = 0.5
 
--- ============================================
 -- D-Pad บิน
--- ============================================
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
 pad.Position = UDim2.new(1, -200, 0.5, -90)
@@ -308,9 +294,6 @@ local function bind(b, key)
 end
 bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F")
 
--- ============================================
--- คีย์บอร์ด PC
--- ============================================
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.W then pcKeys.W = true end
@@ -330,9 +313,7 @@ UserInputService.InputEnded:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
 end)
 
--- ============================================
--- ปุ่มเช็คชื่อ (P - วงกลม)
--- ============================================
+-- ปุ่มเช็คชื่อ (P)
 local checkBtn = Instance.new("TextButton")
 checkBtn.Size = UDim2.new(0, 55, 0, 55)
 checkBtn.Position = UDim2.new(0, 20, 0, 165)
@@ -349,9 +330,7 @@ Instance.new("UICorner", checkBtn).CornerRadius = UDim.new(1, 0)
 local cs = Instance.new("UIStroke", checkBtn)
 cs.Color = COLOR_ACCENT; cs.Thickness = 1.5; cs.Transparency = 0.2
 
--- ============================================
 -- เมนูเช็คชื่อ
--- ============================================
 local checkMenu = Instance.new("Frame")
 checkMenu.Size = UDim2.new(0, 280, 0, 410)
 checkMenu.Position = UDim2.new(0.5, -140, 0.5, -205)
@@ -383,7 +362,6 @@ cTitle.Font = Enum.Font.GothamBold
 cTitle.TextSize = 16
 cTitle.Parent = checkMenu
 
--- ปุ่มปิดส่องกล้อง (ปุ่มเดียว)
 local stopSpecBtn = Instance.new("TextButton")
 stopSpecBtn.Size = UDim2.new(0.9, 0, 0, 34)
 stopSpecBtn.Position = UDim2.new(0.05, 0, 0, 60)
@@ -436,9 +414,6 @@ Instance.new("UICorner", cCloseBtn).CornerRadius = UDim.new(0, 10)
 local ccs = Instance.new("UIStroke", cCloseBtn)
 ccs.Color = Color3.fromRGB(80, 80, 90); ccs.Thickness = 1; ccs.Transparency = 0.5
 
--- ============================================
--- Helper
--- ============================================
 local function canToggle()
     local now = tick()
     if now - lastToggleTime < TOGGLE_COOLDOWN then return false end
@@ -452,18 +427,12 @@ local function clamp(v, minV, maxV)
     return v
 end
 
--- ============================================
--- ปุ่มพับเมนูหลัก
--- ============================================
 toggleBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
     main.Visible = isOpen
     toggleBtn.BackgroundColor3 = isOpen and COLOR_BG or Color3.fromRGB(80, 15, 15)
 end)
 
--- ============================================
--- ดึงอนิเมชั่นวิ่ง
--- ============================================
 local function getGameRunTrack()
     if not runAnimator then return nil end
     local tracks = runAnimator:GetPlayingAnimationTracks()
@@ -500,20 +469,14 @@ local function getGameRunTrack()
 end
 
 -- ============================================
--- ★ วิ่งไวแบบ BodyVelocity (ไถล - ไม่ทับอนิเมชั่น)
+-- ★ วิ่งไว (WalkSpeed + Enforce ทุกเฟรม)
 -- ============================================
 spdBtn.MouseButton1Click:Connect(function()
     if not canToggle() then return end
     speedEnabled = not speedEnabled
     spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
     spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE or COLOR_BG_LIGHT
-    if not speedEnabled then
-        if speedBodyVel then
-            speedBodyVel:Destroy()
-            speedBodyVel = nil
-        end
-        if humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
-    end
+    if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
 end)
 
 spdBox.FocusLost:Connect(function()
@@ -522,29 +485,14 @@ spdBox.FocusLost:Connect(function()
     else spdBox.Text = "50"; runSpeed = 50 end
 end)
 
--- ★ BodyVelocity วิ่งไว - ใช้ MoveDirection จากจอย/WASD
+-- ★ Enforce WalkSpeed ทุกเฟรม (แบบ V2)
 RunService.Heartbeat:Connect(function()
     if not scriptAlive then return end
-    if speedEnabled and humanoid and humanoid.Parent == character and rootPart.Parent == character then
-        local move = humanoid.MoveDirection
-        if move.Magnitude > 0 then
-            if not speedBodyVel or not speedBodyVel.Parent then
-                speedBodyVel = Instance.new("BodyVelocity")
-                speedBodyVel.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                speedBodyVel.P = 1250
-                speedBodyVel.Parent = rootPart
-            end
+    if speedEnabled and humanoid and humanoid.Parent == character then
+        -- ถ้าบินอยู่ ไม่ต้อง set WalkSpeed (บินใช้ BodyVelocity)
+        if not flyEnabled then
             local jitter = 1 + (math.random() - 0.5) * 0.04
-            speedBodyVel.Velocity = move.Unit * runSpeed * jitter
-        else
-            if speedBodyVel then
-                speedBodyVel.Velocity = Vector3.new(0, 0, 0)
-            end
-        end
-    else
-        if speedBodyVel then
-            speedBodyVel:Destroy()
-            speedBodyVel = nil
+            humanoid.WalkSpeed = runSpeed * jitter
         end
     end
 end)
@@ -595,7 +543,12 @@ local function stopFly()
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-        humanoid.WalkSpeed = 16
+        -- ★ คืนค่า WalkSpeed ตามสถานะวิ่ง
+        if speedEnabled then
+            humanoid.WalkSpeed = runSpeed
+        else
+            humanoid.WalkSpeed = 16
+        end
     end
     pad.Visible = false
     for k in pairs(dirs) do dirs[k] = false end
@@ -658,7 +611,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ============================================
--- มองทะลุ (ESP)
+-- มองทะลุ
 -- ============================================
 local function clearESP()
     for _, obj in pairs(espObjects) do if obj then obj:Destroy() end end
@@ -836,7 +789,6 @@ local function spectatePlayer(targetPlayer)
     spectateDist = 12
 end
 
--- ฟังก์ชัน TP ไปหาผู้เล่น
 local function teleportToPlayer(targetPlayer)
     if not targetPlayer then return end
     local targetChar = targetPlayer.Character
@@ -926,7 +878,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 -- ============================================
--- รายชื่อผู้เล่น (รูป + DisplayName + @username + TP + ส่อง)
+-- รายชื่อผู้เล่น
 -- ============================================
 local function refreshPlayerList()
     for _, data in pairs(playerRows) do
@@ -947,7 +899,6 @@ local function refreshPlayerList()
             row.Parent = scroll
             Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
-            -- รูปโปรไฟล์
             local avatar = Instance.new("ImageLabel")
             avatar.Size = UDim2.new(0, 30, 0, 30)
             avatar.Position = UDim2.new(0.02, 0, 0.5, -15)
@@ -974,7 +925,6 @@ local function refreshPlayerList()
                 end
             end)
 
-            -- DisplayName
             local nameLbl = Instance.new("TextLabel")
             nameLbl.Size = UDim2.new(0.42, 0, 0.5, 0)
             nameLbl.Position = UDim2.new(0.14, 0, 0.05, 0)
@@ -987,7 +937,6 @@ local function refreshPlayerList()
             nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
             nameLbl.Parent = row
 
-            -- @Username
             local userLbl = Instance.new("TextLabel")
             userLbl.Size = UDim2.new(0.42, 0, 0.4, 0)
             userLbl.Position = UDim2.new(0.14, 0, 0.52, 0)
@@ -1000,7 +949,6 @@ local function refreshPlayerList()
             userLbl.TextTruncate = Enum.TextTruncate.AtEnd
             userLbl.Parent = row
 
-            -- ระยะ
             local distLbl = Instance.new("TextLabel")
             distLbl.Size = UDim2.new(0.13, 0, 1, 0)
             distLbl.Position = UDim2.new(0.57, 0, 0, 0)
@@ -1011,7 +959,6 @@ local function refreshPlayerList()
             distLbl.TextSize = 10
             distLbl.Parent = row
 
-            -- ปุ่ม TP
             local tpBtn = Instance.new("TextButton")
             tpBtn.Size = UDim2.new(0.13, 0, 0, 28)
             tpBtn.Position = UDim2.new(0.71, 0, 0.5, -14)
@@ -1030,7 +977,6 @@ local function refreshPlayerList()
                 teleportToPlayer(p)
             end)
 
-            -- ปุ่ม ส่อง
             local specBtn = Instance.new("TextButton")
             specBtn.Size = UDim2.new(0.13, 0, 0, 28)
             specBtn.Position = UDim2.new(0.85, 0, 0.5, -14)
@@ -1130,9 +1076,6 @@ for _, p in pairs(Players:GetPlayers()) do
     end
 end
 
--- ============================================
--- ปุ่มปิดสคริปต์
--- ============================================
 local function killScript()
     scriptAlive = false
     speedEnabled, flyEnabled, espEnabled, nameEnabled = false, false, false, false
@@ -1140,7 +1083,6 @@ local function killScript()
     stopSpectate()
     clearESP()
     clearNames()
-    if speedBodyVel then speedBodyVel:Destroy(); speedBodyVel = nil end
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
         humanoid.WalkSpeed = 16
@@ -1175,7 +1117,6 @@ player.CharacterAdded:Connect(function(nc)
     flyBtn.Text = "บินได้: ปิด"; flyBtn.BackgroundColor3 = COLOR_BG_LIGHT
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
-    if speedBodyVel then speedBodyVel:Destroy(); speedBodyVel = nil end
     pad.Visible = false
     for k in pairs(dirs) do dirs[k] = false end
     task.wait(1)
@@ -1183,4 +1124,4 @@ player.CharacterAdded:Connect(function(nc)
     refreshESP(); refreshNames()
 end)
 
-print("Boom script loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
+print("Boom script loaded OK | By Boomxico | V3 | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
