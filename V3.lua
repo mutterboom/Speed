@@ -1,7 +1,7 @@
 -- ============================================
 -- By Boomxico | Dark Red Luxury UI + Anti-Detect
 -- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
--- V3 : จำสถานะหลังตาย + ปุ่ม P ซ่อน (เปิดจากเมนูหลัก)
+-- V3 : จำสถานะหลังตาย + ปุ่มรายชื่อซ่อน + Auto-refresh
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -33,7 +33,6 @@ if not runAnimator then
 end
 local runAnimTrack = nil
 
--- ★ เก็บสถานะก่อนตาย
 local savedState = {
     speed = false,
     speedVal = 50,
@@ -100,7 +99,6 @@ ts.Color = COLOR_BORDER
 ts.Thickness = 1.5
 ts.Transparency = 0.2
 
--- หน้าต่างหลัก (สูงขึ้นเพื่อใส่ปุ่มเมนูรายชื่อ)
 local main = Instance.new("Frame")
 main.Size = UDim2.new(0, 260, 0, 450)
 main.Position = UDim2.new(0, 20, 0, 165)
@@ -236,20 +234,22 @@ Instance.new("UICorner", distBox).CornerRadius = UDim.new(0, 10)
 local dbs = Instance.new("UIStroke", distBox)
 dbs.Color = COLOR_BORDER; dbs.Thickness = 1; dbs.Transparency = 0.4
 
--- ★ ปุ่มเปิดเมนูรายชื่อ (ใหม่)
+-- ★ ปุ่มเปิดเมนูรายชื่อ (สีดำปกติ)
 local openListBtn = Instance.new("TextButton")
 openListBtn.Size = UDim2.new(0.9, 0, 0, 34)
 openListBtn.Position = UDim2.new(0.05, 0, 0.68, 0)
-openListBtn.BackgroundColor3 = Color3.fromRGB(140, 15, 15)
-openListBtn.BackgroundTransparency = 0.1
+openListBtn.BackgroundColor3 = COLOR_BG_LIGHT
+openListBtn.BackgroundTransparency = 0.15
 openListBtn.Text = "เปิดเมนูรายชื่อ"
-openListBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-openListBtn.Font = Enum.Font.GothamBold
+openListBtn.TextColor3 = COLOR_TEXT
+openListBtn.Font = Enum.Font.GothamMedium
 openListBtn.TextSize = 13
 openListBtn.Parent = main
 Instance.new("UICorner", openListBtn).CornerRadius = UDim.new(0, 10)
 local olbs = Instance.new("UIStroke", openListBtn)
-olbs.Color = COLOR_ACCENT; olbs.Thickness = 1; olbs.Transparency = 0.2
+olbs.Color = Color3.fromRGB(80, 80, 90)
+olbs.Thickness = 1
+olbs.Transparency = 0.5
 
 local killBtn = Instance.new("TextButton")
 killBtn.Size = UDim2.new(0.9, 0, 0, 34)
@@ -339,8 +339,6 @@ UserInputService.InputEnded:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = false end
     if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
 end)
-
--- ★ ลบปุ่ม P ออกแล้ว (ใช้ปุ่มในเมนูหลักแทน)
 
 -- เมนูเช็คชื่อ (ซ่อนไว้)
 local checkMenu = Instance.new("Frame")
@@ -443,14 +441,6 @@ toggleBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
     main.Visible = isOpen
     toggleBtn.BackgroundColor3 = isOpen and COLOR_BG or Color3.fromRGB(80, 15, 15)
-end)
-
--- ★ ปุ่มเปิดเมนูรายชื่อ
-openListBtn.MouseButton1Click:Connect(function()
-    checkMenu.Visible = not checkMenu.Visible
-    if checkMenu.Visible then
-        refreshPlayerList()
-    end
 end)
 
 local function getGameRunTrack()
@@ -893,7 +883,9 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- รายชื่อผู้เล่น
+-- ============================================
+-- รายชื่อผู้เล่น (Auto-refresh)
+-- ============================================
 local function refreshPlayerList()
     for _, data in pairs(playerRows) do
         if data and data.row then data.row:Destroy() end
@@ -903,8 +895,11 @@ local function refreshPlayerList()
     local players = Players:GetPlayers()
     table.sort(players, function(a, b) return a.Name:lower() < b.Name:lower() end)
 
+    local count = 0
     for _, p in pairs(players) do
         if p ~= player then
+            count = count + 1
+
             local row = Instance.new("Frame")
             row.Size = UDim2.new(1, -8, 0, 44)
             row.BackgroundColor3 = COLOR_BG_LIGHT
@@ -1012,7 +1007,27 @@ local function refreshPlayerList()
             table.insert(playerRows, {row = row, player = p, distLbl = distLbl})
         end
     end
+    print("[Boom] Player list refreshed:", count, "players")
 end
+
+-- ★ ปุ่มเปิดเมนูรายชื่อ + Auto-refresh
+openListBtn.MouseButton1Click:Connect(function()
+    checkMenu.Visible = not checkMenu.Visible
+    if checkMenu.Visible then
+        task.wait(0.05)
+        refreshPlayerList()
+    end
+end)
+
+-- ★ Auto-refresh ทุก 2 วิ
+task.spawn(function()
+    while scriptAlive do
+        task.wait(2)
+        if checkMenu.Visible then
+            refreshPlayerList()
+        end
+    end
+end)
 
 task.spawn(function()
     while scriptAlive do
@@ -1107,7 +1122,6 @@ closeBtn.MouseButton1Click:Connect(function()
     toggleBtn.BackgroundColor3 = Color3.fromRGB(80, 15, 15)
 end)
 
--- ★ เกิดใหม่ — คืนค่าสถานะที่บันทึกไว้
 player.CharacterAdded:Connect(function(nc)
     character = nc
     humanoid = character:WaitForChild("Humanoid")
