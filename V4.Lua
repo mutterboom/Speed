@@ -1,8 +1,7 @@
 -- ============================================
--- By Boomxico | Golden Glass UI V4.6 CLEAN
+-- By Boomxico | Golden Glass UI V4.7
 -- วิ่งไว + บินได้ + มองทะลุ + เห็นชื่อ + เช็คชื่อ + TP
--- + Noclip + FPS Boost + Custom Hotkey
--- ไม่มี Infinite Jump / ไม่มีโค้ดค้าง / Hotkey ว่างเปล่า
+-- + Noclip + FPS Boost + Custom Hotkey (Fixed)
 -- ============================================
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -19,7 +18,7 @@ local isPC = UserInputService.KeyboardEnabled and not UserInputService.TouchEnab
 local isMobile = UserInputService.TouchEnabled
 
 -- ============================================
--- State Variables
+-- State
 -- ============================================
 local speedEnabled = false
 local flyEnabled = false
@@ -37,15 +36,11 @@ local scriptAlive = true
 local dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
 local pcKeys = {W=false, A=false, S=false, D=false, Space=false, Shift=false}
 
--- ★ Hotkey ว่างเปล่า — ผู้ใช้ต้องตั้งเอง
 local hotkeys = {
     speed = {key = nil, pressed = false},
     fly = {key = nil, pressed = false}
 }
 
--- ============================================
--- Character References
--- ============================================
 local runAnimator = humanoid:FindFirstChildOfClass("Animator")
 if not runAnimator then
     runAnimator = Instance.new("Animator")
@@ -53,7 +48,6 @@ if not runAnimator then
 end
 local runAnimTrack = nil
 
--- ★ savedState (ไม่มี infJump แล้ว)
 local savedState = {
     speed = false, speedVal = 50,
     fly = false, flyVal = 50,
@@ -64,7 +58,7 @@ local savedState = {
 }
 
 -- ============================================
--- Spectate System
+-- Spectate
 -- ============================================
 local spectateTarget = nil
 local spectateEnabled = false
@@ -84,9 +78,6 @@ local lastToggleTime = 0
 local TOGGLE_COOLDOWN = 0.4
 local NAME_MAX_DIST = 800
 
--- ============================================
--- Storage
--- ============================================
 local espObjects = {}
 local nameObjects = {}
 local nameData = {}
@@ -108,6 +99,22 @@ local COLOR_ACCENT = Color3.fromRGB(255, 200, 0)
 local COLOR_GLOW = Color3.fromRGB(255, 230, 100)
 local COLOR_ACTIVE_BG = Color3.fromRGB(120, 90, 0)
 local COLOR_DANGER_BG = Color3.fromRGB(80, 15, 15)
+
+-- ============================================
+-- Helper Functions (ประกาศก่อน UI ทั้งหมด)
+-- ============================================
+local function canToggle()
+    local now = tick()
+    if now - lastToggleTime < TOGGLE_COOLDOWN then return false end
+    lastToggleTime = now
+    return true
+end
+
+local function clamp(v, minV, maxV)
+    if v < minV then return minV end
+    if v > maxV then return maxV end
+    return v
+end
 
 -- ============================================
 -- Glow Animation
@@ -147,7 +154,6 @@ gui.Name = "ByBoomMenu"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- Toggle Button
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0, 55, 0, 55)
 toggleBtn.Position = UDim2.new(0, 20, 0, 100)
@@ -165,7 +171,6 @@ toggleBtn.Parent = gui
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
 addGlow(toggleBtn, 0.5, true)
 
--- Main Frame
 local main = Instance.new("Frame")
 main.Size = UDim2.new(0, 270, 0, 570)
 main.Position = UDim2.new(0, 20, 0, 165)
@@ -177,7 +182,6 @@ main.Parent = gui
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 18)
 addGlow(main, 0.7, false)
 
--- Top Line
 local topLine = Instance.new("Frame")
 topLine.Size = UDim2.new(1, -30, 0, 2)
 topLine.Position = UDim2.new(0, 15, 0, 0)
@@ -186,7 +190,6 @@ topLine.BorderSizePixel = 0
 topLine.Parent = main
 Instance.new("UICorner", topLine).CornerRadius = UDim.new(1, 0)
 
--- Title
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 0, 42)
 title.Position = UDim2.new(0, 10, 0, 12)
@@ -205,7 +208,6 @@ titleGlow.Thickness = 1
 titleGlow.Transparency = 0.5
 table.insert(glowObjects, {stroke = titleGlow, base = 0.5, title = true})
 
--- Divider
 local divider = Instance.new("Frame")
 divider.Size = UDim2.new(1, -30, 0, 1)
 divider.Position = UDim2.new(0, 15, 0, 58)
@@ -214,9 +216,6 @@ divider.BackgroundTransparency = 0.5
 divider.BorderSizePixel = 0
 divider.Parent = main
 
--- ============================================
--- UI Helpers
--- ============================================
 local function mkBtn(y, labelText, fullWidth)
     local btn = Instance.new("TextButton")
     if fullWidth then
@@ -258,16 +257,11 @@ local function mkBox(y, defaultVal)
     return box
 end
 
--- ============================================
--- Main Buttons
--- ============================================
 local spdBtn = mkBtn(0.13, "วิ่งไว: ปิด")
 local spdBox = mkBox(0.13, "50")
-
 local flyBtn = mkBtn(0.21, "บินได้: ปิด")
 local flyBox = mkBox(0.21, "50")
 
--- Hotkey Row
 local hotkeyRow = Instance.new("Frame")
 hotkeyRow.Size = UDim2.new(0.9, 0, 0, 28)
 hotkeyRow.Position = UDim2.new(0.05, 0, 0.29, 0)
@@ -346,7 +340,7 @@ local closeBtn = mkBtn(0.93, "ซ่อนเมนู", true)
 closeBtn.TextColor3 = COLOR_TEXT_DIM
 
 -- ============================================
--- D-Pad (Flight)
+-- D-Pad
 -- ============================================
 local pad = Instance.new("Frame")
 pad.Size = UDim2.new(0, 180, 0, 180)
@@ -390,12 +384,152 @@ end
 bind(bU,"U") bind(bD,"D") bind(bL,"L") bind(bR,"R") bind(bF,"F")
 
 -- ============================================
--- Input Handling (Single Listener)
+-- Animation Loader
+-- ============================================
+local function getGameRunTrack()
+    if not runAnimator then return nil end
+    local tracks = runAnimator:GetPlayingAnimationTracks()
+    for _, track in pairs(tracks) do
+        local nm = track.Name or ""
+        local anim = track.Animation
+        local id = anim and anim.AnimationId or ""
+        if nm == "run" or nm == "RunAnim"
+           or id == "rbxassetid://507767714"
+           or string.find(id, "run") then
+            return track
+        end
+    end
+    local animateScript = character:FindFirstChild("Animate")
+    if animateScript then
+        local runNode = animateScript:FindFirstChild("run")
+        local runAnimObj = runNode and runNode:FindFirstChild("RunAnim")
+        if runAnimObj and runAnimObj.AnimationId ~= "" then
+            local anim = Instance.new("Animation")
+            anim.AnimationId = runAnimObj.AnimationId
+            local ok, track = pcall(function() return runAnimator:LoadAnimation(anim) end)
+            if ok and track then return track end
+        end
+    end
+    local fb = Instance.new("Animation")
+    fb.AnimationId = "rbxassetid://507767714"
+    local ok, track = pcall(function() return runAnimator:LoadAnimation(fb) end)
+    if ok then return track end
+    return nil
+end
+
+-- ============================================
+-- Noclip Functions
+-- ============================================
+function enableNoclip()
+    if noclipConnection then return end
+    noclipConnection = RunService.Stepped:Connect(function()
+        if not noclipEnabled then return end
+        if not character or not character.Parent then return end
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end)
+end
+
+function disableNoclip()
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    if character and character.Parent then
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                pcall(function() part.CanCollide = true end)
+            end
+        end
+    end
+end
+
+-- ============================================
+-- FPS Boost
+-- ============================================
+local function enableFPSBoost()
+    if not fpsBoostEnabled then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ParticleEmitter") 
+           or obj:IsA("Fire") 
+           or obj:IsA("Smoke") 
+           or obj:IsA("Sparkles") then
+            if obj.Enabled then
+                table.insert(fpsBoostBackup, {obj = obj, prop = "Enabled", val = true})
+                obj.Enabled = false
+            end
+        end
+        if obj:IsA("Decal") or obj:IsA("Texture") then
+            if obj.Transparency < 1 then
+                table.insert(fpsBoostBackup, {obj = obj, prop = "Transparency", val = obj.Transparency})
+                obj.Transparency = 1
+            end
+        end
+    end
+    local Lighting = game:GetService("Lighting")
+    table.insert(fpsBoostBackup, {obj = Lighting, prop = "GlobalShadows", val = Lighting.GlobalShadows})
+    table.insert(fpsBoostBackup, {obj = Lighting, prop = "FogEnd", val = Lighting.FogEnd})
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 100000
+    for _, obj in ipairs(Lighting:GetChildren()) do
+        if obj:IsA("PostEffect") and obj.Enabled then
+            table.insert(fpsBoostBackup, {obj = obj, prop = "Enabled", val = true})
+            obj.Enabled = false
+        end
+    end
+    local Terrain = workspace:FindFirstChildOfClass("Terrain")
+    if Terrain then
+        table.insert(fpsBoostBackup, {obj = Terrain, prop = "WaterWaveSize", val = Terrain.WaterWaveSize})
+        table.insert(fpsBoostBackup, {obj = Terrain, prop = "WaterWaveSpeed", val = Terrain.WaterWaveSpeed})
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+    end
+    print("[Boom] FPS Boost enabled:", #fpsBoostBackup, "objects")
+end
+
+local function disableFPSBoost()
+    for _, data in ipairs(fpsBoostBackup) do
+        if data.obj and data.obj.Parent ~= nil then
+            pcall(function() data.obj[data.prop] = data.val end)
+        end
+    end
+    fpsBoostBackup = {}
+    print("[Boom] FPS Boost disabled")
+end
+
+-- ============================================
+-- ★ Toggle Functions (ประกาศก่อน Input Listener)
+-- ============================================
+local function toggleSpeed()
+    if not canToggle() then return end
+    speedEnabled = not speedEnabled
+    spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
+    spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
+    savedState.speed = speedEnabled
+    savedState.speedVal = runSpeed
+    if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
+end
+
+local function toggleFly()
+    if not canToggle() then return end
+    flyEnabled = not flyEnabled
+    flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
+    flyBtn.BackgroundColor3 = flyEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
+    savedState.fly = flyEnabled
+    savedState.flyVal = flySpeed
+    if flyEnabled then startFly() else stopFly() end
+end
+
+-- ============================================
+-- Input Handling
 -- ============================================
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     
-    -- Movement keys
+    -- Movement
     if input.KeyCode == Enum.KeyCode.W then pcKeys.W = true end
     if input.KeyCode == Enum.KeyCode.A then pcKeys.A = true end
     if input.KeyCode == Enum.KeyCode.S then pcKeys.S = true end
@@ -418,39 +552,24 @@ UserInputService.InputBegan:Connect(function(input, gp)
         noclipBusy = false
     end
     
-    -- Hotkey: Speed (เช็ค key ~= nil ก่อน)
+    -- Hotkey Speed
     if hotkeys.speed.key ~= nil and input.KeyCode == hotkeys.speed.key then
         if not hotkeys.speed.pressed then
             hotkeys.speed.pressed = true
-            if canToggle() then
-                speedEnabled = not speedEnabled
-                spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
-                spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
-                savedState.speed = speedEnabled
-                savedState.speedVal = runSpeed
-                if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
-            end
+            toggleSpeed()
         end
     end
     
-    -- Hotkey: Fly (เช็ค key ~= nil ก่อน)
+    -- Hotkey Fly
     if hotkeys.fly.key ~= nil and input.KeyCode == hotkeys.fly.key then
         if not hotkeys.fly.pressed then
             hotkeys.fly.pressed = true
-            if canToggle() then
-                flyEnabled = not flyEnabled
-                flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
-                flyBtn.BackgroundColor3 = flyEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
-                savedState.fly = flyEnabled
-                savedState.flyVal = flySpeed
-                if flyEnabled then startFly() else stopFly() end
-            end
+            toggleFly()
         end
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    -- Movement keys
     if input.KeyCode == Enum.KeyCode.W then pcKeys.W = false end
     if input.KeyCode == Enum.KeyCode.A then pcKeys.A = false end
     if input.KeyCode == Enum.KeyCode.S then pcKeys.S = false end
@@ -458,7 +577,6 @@ UserInputService.InputEnded:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.Space then pcKeys.Space = false end
     if input.KeyCode == Enum.KeyCode.LeftShift then pcKeys.Shift = false end
     
-    -- Hotkey release
     if hotkeys.speed.key ~= nil and input.KeyCode == hotkeys.speed.key then
         hotkeys.speed.pressed = false
     end
@@ -663,41 +781,28 @@ end
 hotkeySpdBtn.MouseButton1Click:Connect(function() openHotkeyPopup("speed") end)
 hotkeyFlyBtn.MouseButton1Click:Connect(function() openHotkeyPopup("fly") end)
 
--- ============================================
 -- Numpad Map
--- ============================================
 local numpadMap = {
-    ["+"] = "KeypadPlus",
-    ["-"] = "KeypadMinus",
-    ["*"] = "KeypadMultiply",
-    ["/"] = "KeypadDivide",
+    ["+"] = "KeypadPlus", ["-"] = "KeypadMinus",
+    ["*"] = "KeypadMultiply", ["/"] = "KeypadDivide",
     ["."] = "KeypadPeriod",
-    ["0"] = "KeypadZero",
-    ["1"] = "KeypadOne",
-    ["2"] = "KeypadTwo",
-    ["3"] = "KeypadThree",
-    ["4"] = "KeypadFour",
-    ["5"] = "KeypadFive",
-    ["6"] = "KeypadSix",
-    ["7"] = "KeypadSeven",
-    ["8"] = "KeypadEight",
+    ["0"] = "KeypadZero", ["1"] = "KeypadOne", ["2"] = "KeypadTwo",
+    ["3"] = "KeypadThree", ["4"] = "KeypadFour", ["5"] = "KeypadFive",
+    ["6"] = "KeypadSix", ["7"] = "KeypadSeven", ["8"] = "KeypadEight",
     ["9"] = "KeypadNine"
 }
 
 hpSaveBtn.MouseButton1Click:Connect(function()
     if not hotkeyEditTarget then return end
     local raw = string.gsub(hpKeyBox.Text, "%s", "")
-    
     if raw == "" then
         hotkeys[hotkeyEditTarget].key = nil
         hotkeyPopup.Visible = false
         print("[Boom] Hotkey cleared:", hotkeyEditTarget)
         return
     end
-    
     local text = string.upper(raw)
     local keyCode = nil
-    
     if numpadMap[raw] then
         keyCode = Enum.KeyCode[numpadMap[raw]]
     elseif numpadMap[text] then
@@ -706,13 +811,12 @@ hpSaveBtn.MouseButton1Click:Connect(function()
         local ok, kc = pcall(function() return Enum.KeyCode[text] end)
         if ok then keyCode = kc end
     end
-    
     if keyCode then
         hotkeys[hotkeyEditTarget].key = keyCode
         hotkeyPopup.Visible = false
         print("[Boom] Hotkey set:", hotkeyEditTarget, "=", keyCode.Name)
     else
-        hpTarget.Text = "ปุ่มไม่ถูกต้อง! ลอง +/-/*///Q/F/X"
+        hpTarget.Text = "ปุ่มไม่ถูกต้อง!"
         task.wait(2)
         hpTarget.Text = "Target: " .. (hotkeyEditTarget == "speed" and "วิ่งไว" or "บินได้")
     end
@@ -725,183 +829,13 @@ end)
 hotkeyClearBtn.MouseButton1Click:Connect(function()
     hotkeys.speed.key = nil
     hotkeys.fly.key = nil
-    hotkeyPopup.Visible = false    print("[Boom] All hotkeys cleared")
+    hotkeyPopup.Visible = false
+    print("[Boom] All hotkeys cleared")
 end)
 
 -- ============================================
--- Helper Functions
+-- Speed (Button + Heartbeat)
 -- ============================================
-local function canToggle()
-    local now = tick()
-    if now - lastToggleTime < TOGGLE_COOLDOWN then return false end
-    lastToggleTime = now
-    return true
-end
-
-local function clamp(v, minV, maxV)
-    if v < minV then return minV end
-    if v > maxV then return maxV end
-    return v
-end
-
--- ============================================
--- Animation Loader
--- ============================================
-local function getGameRunTrack()
-    if not runAnimator then return nil end
-    local tracks = runAnimator:GetPlayingAnimationTracks()
-    for _, track in pairs(tracks) do
-        local nm = track.Name or ""
-        local anim = track.Animation
-        local id = anim and anim.AnimationId or ""
-        if nm == "run" or nm == "RunAnim"
-           or id == "rbxassetid://507767714"
-           or string.find(id, "run") then
-            return track
-        end
-    end
-    local animateScript = character:FindFirstChild("Animate")
-    if animateScript then
-        local runNode = animateScript:FindFirstChild("run")
-        local runAnimObj = runNode and runNode:FindFirstChild("RunAnim")
-        if runAnimObj and runAnimObj.AnimationId ~= "" then
-            local anim = Instance.new("Animation")
-            anim.AnimationId = runAnimObj.AnimationId
-            local ok, track = pcall(function() return runAnimator:LoadAnimation(anim) end)
-            if ok and track then return track end
-        end
-    end
-    local fb = Instance.new("Animation")
-    fb.AnimationId = "rbxassetid://507767714"
-    local ok, track = pcall(function() return runAnimator:LoadAnimation(fb) end)
-    if ok then return track end
-    return nil
-end
-
--- ============================================
--- Noclip Functions
--- ============================================
-function enableNoclip()
-    if noclipConnection then return end
-    noclipConnection = RunService.Stepped:Connect(function()
-        if not noclipEnabled then return end
-        if not character or not character.Parent then return end
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide then
-                part.CanCollide = false
-            end
-        end
-    end)
-end
-
-function disableNoclip()
-    if noclipConnection then
-        noclipConnection:Disconnect()
-        noclipConnection = nil
-    end
-    if character and character.Parent then
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                pcall(function() part.CanCollide = true end)
-            end
-        end
-    end
-end
-
-noclipBtn.MouseButton1Click:Connect(function()
-    if noclipBusy then return end
-    noclipBusy = true
-    task.wait(math.random() * 0.1)
-    noclipEnabled = not noclipEnabled
-    noclipBtn.Text = noclipEnabled and "Noclip: เปิด" or "Noclip: ปิด"
-    noclipBtn.BackgroundColor3 = noclipEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
-    savedState.noclip = noclipEnabled
-    if noclipEnabled then enableNoclip() else disableNoclip() end
-    task.wait(0.05)
-    noclipBusy = false
-end)
-
--- ============================================
--- FPS Boost
--- ============================================
-local function enableFPSBoost()
-    if not fpsBoostEnabled then return end
-    
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ParticleEmitter") 
-           or obj:IsA("Fire") 
-           or obj:IsA("Smoke") 
-           or obj:IsA("Sparkles") then
-            if obj.Enabled then
-                table.insert(fpsBoostBackup, {obj = obj, prop = "Enabled", val = true})
-                obj.Enabled = false
-            end
-        end
-        if obj:IsA("Decal") or obj:IsA("Texture") then
-            if obj.Transparency < 1 then
-                table.insert(fpsBoostBackup, {obj = obj, prop = "Transparency", val = obj.Transparency})
-                obj.Transparency = 1
-            end
-        end
-    end
-    
-    local Lighting = game:GetService("Lighting")
-    table.insert(fpsBoostBackup, {obj = Lighting, prop = "GlobalShadows", val = Lighting.GlobalShadows})
-    table.insert(fpsBoostBackup, {obj = Lighting, prop = "FogEnd", val = Lighting.FogEnd})
-    Lighting.GlobalShadows = false
-    Lighting.FogEnd = 100000
-    
-    for _, obj in ipairs(Lighting:GetChildren()) do
-        if obj:IsA("PostEffect") and obj.Enabled then
-            table.insert(fpsBoostBackup, {obj = obj, prop = "Enabled", val = true})
-            obj.Enabled = false
-        end
-    end
-    
-    local Terrain = workspace:FindFirstChildOfClass("Terrain")
-    if Terrain then
-        table.insert(fpsBoostBackup, {obj = Terrain, prop = "WaterWaveSize", val = Terrain.WaterWaveSize})
-        table.insert(fpsBoostBackup, {obj = Terrain, prop = "WaterWaveSpeed", val = Terrain.WaterWaveSpeed})
-        Terrain.WaterWaveSize = 0
-        Terrain.WaterWaveSpeed = 0
-    end
-    
-    print("[Boom] FPS Boost enabled:", #fpsBoostBackup, "objects modified")
-end
-
-local function disableFPSBoost()
-    for _, data in ipairs(fpsBoostBackup) do
-        if data.obj and data.obj.Parent ~= nil then
-            pcall(function()
-                data.obj[data.prop] = data.val
-            end)
-        end
-    end
-    fpsBoostBackup = {}
-    print("[Boom] FPS Boost disabled")
-end
-
-fpsBoostBtn.MouseButton1Click:Connect(function()
-    fpsBoostEnabled = not fpsBoostEnabled
-    fpsBoostBtn.Text = fpsBoostEnabled and "FPS Boost: เปิด" or "FPS Boost: ปิด"
-    fpsBoostBtn.BackgroundColor3 = fpsBoostEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
-    savedState.fpsBoost = fpsBoostEnabled
-    if fpsBoostEnabled then enableFPSBoost() else disableFPSBoost() end
-end)
-
--- ============================================
--- Speed Function
--- ============================================
-local function toggleSpeed()
-    if not canToggle() then return end
-    speedEnabled = not speedEnabled
-    spdBtn.Text = speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
-    spdBtn.BackgroundColor3 = speedEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
-    savedState.speed = speedEnabled
-    savedState.speedVal = runSpeed
-    if not speedEnabled and humanoid and humanoid.Parent then humanoid.WalkSpeed = 16 end
-end
-
 spdBtn.MouseButton1Click:Connect(toggleSpeed)
 
 spdBox.FocusLost:Connect(function()
@@ -922,7 +856,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ============================================
--- Fly Function
+-- Fly Functions
 -- ============================================
 function startFly()
     if bodyVel then bodyVel:Destroy() end
@@ -969,16 +903,6 @@ function stopFly()
     end
     pad.Visible = false
     for k in pairs(dirs) do dirs[k] = false end
-end
-
-local function toggleFly()
-    if not canToggle() then return end
-    flyEnabled = not flyEnabled
-    flyBtn.Text = flyEnabled and "บินได้: เปิด" or "บินได้: ปิด"
-    flyBtn.BackgroundColor3 = flyEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
-    savedState.fly = flyEnabled
-    savedState.flyVal = flySpeed
-    if flyEnabled then startFly() else stopFly() end
 end
 
 flyBtn.MouseButton1Click:Connect(toggleFly)
@@ -1202,7 +1126,6 @@ local function spectatePlayer(targetPlayer)
         local ok = pcall(function() targetChar = targetPlayer.CharacterAdded:Wait() end)
         if not ok or not targetChar then return end
     end
-
     spectateEnabled = true
     spectateTarget = targetPlayer
     spectateYaw = 0
@@ -1220,7 +1143,6 @@ local function teleportToPlayer(targetPlayer)
     local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
     if not targetRoot then return end
     if not rootPart or not rootPart.Parent then return end
-
     local offset = targetRoot.CFrame.LookVector * -5
     local newPos = targetRoot.Position + offset + Vector3.new(0, 2, 0)
     rootPart.CFrame = CFrame.new(newPos, targetRoot.Position)
@@ -1229,15 +1151,12 @@ end
 RunService:BindToRenderStep("BoomSpectate", Enum.RenderPriority.Camera.Value + 1, function(dt)
     if not scriptAlive then return end
     if not spectateEnabled or not spectateTarget then return end
-
     local targetChar = spectateTarget.Character
     if not targetChar then return end
     local targetHead = targetChar:FindFirstChild("Head")
     if not targetHead then return end
-
     local cam = workspace.CurrentCamera
     cam.CameraType = Enum.CameraType.Scriptable
-
     local yawRad = math.rad(spectateYaw)
     local pitchRad = math.rad(spectatePitch)
     local offset = Vector3.new(
@@ -1247,7 +1166,6 @@ RunService:BindToRenderStep("BoomSpectate", Enum.RenderPriority.Camera.Value + 1
     )
     local camPos = targetHead.Position + offset
     local lookAt = targetHead.Position
-
     cam.CFrame = CFrame.new(camPos, lookAt)
 end)
 
@@ -1304,15 +1222,12 @@ local function refreshPlayerList()
         if data and data.row then data.row:Destroy() end
     end
     playerRows = {}
-
     local players = Players:GetPlayers()
     table.sort(players, function(a, b) return a.Name:lower() < b.Name:lower() end)
-
     local count = 0
     for _, p in pairs(players) do
         if p ~= player then
             count = count + 1
-
             local row = Instance.new("Frame")
             row.Size = UDim2.new(1, -8, 0, 44)
             row.BackgroundColor3 = COLOR_BG_LIGHT
@@ -1336,35 +1251,33 @@ local function refreshPlayerList()
 
             task.spawn(function()
                 local ok, thumb = pcall(function()
-                    return Players:GetUserThumbnailAsync(
-                        p.UserId,
-                        Enum.ThumbnailType.HeadShot,
-                        Enum.ThumbnailSize.Size100x100
-                    )
+                    return Players:GetUserThumbnailAsync(p.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
                 end)
                 if ok and thumb and avatar and avatar.Parent then
                     avatar.Image = thumb
                 end
             end)
 
+            -- ★ DisplayName (ขาว)
             local nameLbl = Instance.new("TextLabel")
             nameLbl.Size = UDim2.new(0.42, 0, 0.5, 0)
             nameLbl.Position = UDim2.new(0.14, 0, 0.05, 0)
             nameLbl.BackgroundTransparency = 1
             nameLbl.Text = p.DisplayName
-            nameLbl.TextColor3 = COLOR_TEXT
+            nameLbl.TextColor3 = Color3.fromRGB(230, 230, 240)
             nameLbl.Font = Enum.Font.GothamMedium
             nameLbl.TextSize = 12
             nameLbl.TextXAlignment = Enum.TextXAlignment.Left
             nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
             nameLbl.Parent = row
 
+            -- ★ @Username (เทา)
             local userLbl = Instance.new("TextLabel")
             userLbl.Size = UDim2.new(0.42, 0, 0.4, 0)
             userLbl.Position = UDim2.new(0.14, 0, 0.52, 0)
             userLbl.BackgroundTransparency = 1
             userLbl.Text = "@" .. p.Name
-            userLbl.TextColor3 = COLOR_TEXT_DIM
+            userLbl.TextColor3 = Color3.fromRGB(150, 150, 160)
             userLbl.Font = Enum.Font.Gotham
             userLbl.TextSize = 10
             userLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -1420,7 +1333,7 @@ local function refreshPlayerList()
 end
 
 -- ============================================
--- UI Event Bindings
+-- UI Events
 -- ============================================
 toggleBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
@@ -1441,6 +1354,27 @@ end)
 
 stopSpecBtn.MouseButton1Click:Connect(stopSpectate)
 
+noclipBtn.MouseButton1Click:Connect(function()
+    if noclipBusy then return end
+    noclipBusy = true
+    task.wait(math.random() * 0.1)
+    noclipEnabled = not noclipEnabled
+    noclipBtn.Text = noclipEnabled and "Noclip: เปิด" or "Noclip: ปิด"
+    noclipBtn.BackgroundColor3 = noclipEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
+    savedState.noclip = noclipEnabled
+    if noclipEnabled then enableNoclip() else disableNoclip() end
+    task.wait(0.05)
+    noclipBusy = false
+end)
+
+fpsBoostBtn.MouseButton1Click:Connect(function()
+    fpsBoostEnabled = not fpsBoostEnabled
+    fpsBoostBtn.Text = fpsBoostEnabled and "FPS Boost: เปิด" or "FPS Boost: ปิด"
+    fpsBoostBtn.BackgroundColor3 = fpsBoostEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
+    savedState.fpsBoost = fpsBoostEnabled
+    if fpsBoostEnabled then enableFPSBoost() else disableFPSBoost() end
+end)
+
 closeBtn.MouseButton1Click:Connect(function()
     main.Visible = false
     isOpen = false
@@ -1449,7 +1383,6 @@ end)
 -- ============================================
 -- Background Loops
 -- ============================================
--- Auto-refresh player list
 task.spawn(function()
     while scriptAlive do
         task.wait(2)
@@ -1457,7 +1390,6 @@ task.spawn(function()
     end
 end)
 
--- Distance updater
 task.spawn(function()
     while scriptAlive do
         task.wait(0.5)
@@ -1477,7 +1409,6 @@ task.spawn(function()
     end
 end)
 
--- Spectate validator
 task.spawn(function()
     while scriptAlive do
         task.wait(0.5)
@@ -1531,7 +1462,7 @@ for _, p in pairs(Players:GetPlayers()) do
 end
 
 -- ============================================
--- Kill Script
+-- Kill
 -- ============================================
 local function killScript()
     scriptAlive = false
@@ -1540,25 +1471,21 @@ local function killScript()
     espEnabled = false
     nameEnabled = false
     noclipEnabled = false
-    
     if fpsBoostEnabled then
         fpsBoostEnabled = false
         disableFPSBoost()
     end
-    
     stopFly()
     stopSpectate()
     disableNoclip()
     clearESP()
     clearNames()
-    
     if humanoid and humanoid.Parent == character then
         humanoid.PlatformStand = false
         humanoid.WalkSpeed = 16
         humanoid.JumpPower = 50
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
     end
-    
     if gui then gui:Destroy() end
 end
 
@@ -1571,21 +1498,16 @@ player.CharacterAdded:Connect(function(nc)
     character = nc
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
-
     runAnimator = humanoid:FindFirstChildOfClass("Animator")
     if not runAnimator then
         runAnimator = Instance.new("Animator")
         runAnimator.Parent = humanoid
     end
     runAnimTrack = nil
-
     if bodyVel then bodyVel:Destroy(); bodyVel = nil end
     if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
-
     task.wait(1)
     if not scriptAlive then return end
-
-    -- Restore Speed
     if savedState.speed then
         speedEnabled = true
         runSpeed = savedState.speedVal
@@ -1599,8 +1521,6 @@ player.CharacterAdded:Connect(function(nc)
         spdBtn.BackgroundColor3 = COLOR_BG_LIGHT
         humanoid.WalkSpeed = 16
     end
-
-    -- Restore Fly
     if savedState.fly then
         flyEnabled = true
         flySpeed = savedState.flyVal
@@ -1614,8 +1534,6 @@ player.CharacterAdded:Connect(function(nc)
         flyBtn.BackgroundColor3 = COLOR_BG_LIGHT
         pad.Visible = false
     end
-
-    -- Restore ESP
     if savedState.esp then
         espEnabled = true
         espBtn.Text = "มองทะลุ: เปิด"
@@ -1626,8 +1544,6 @@ player.CharacterAdded:Connect(function(nc)
         espBtn.Text = "มองทะลุ: ปิด"
         espBtn.BackgroundColor3 = COLOR_BG_LIGHT
     end
-
-    -- Restore Name
     if savedState.name then
         nameEnabled = true
         NAME_MAX_DIST = savedState.nameDist
@@ -1640,8 +1556,6 @@ player.CharacterAdded:Connect(function(nc)
         nameBtn.Text = "เห็นชื่อ: ปิด"
         nameBtn.BackgroundColor3 = COLOR_BG_LIGHT
     end
-
-    -- Restore Noclip
     if savedState.noclip then
         noclipEnabled = true
         noclipBtn.Text = "Noclip: เปิด"
@@ -1652,8 +1566,6 @@ player.CharacterAdded:Connect(function(nc)
         noclipBtn.Text = "Noclip: ปิด"
         noclipBtn.BackgroundColor3 = COLOR_BG_LIGHT
     end
-
-    -- Restore FPS Boost
     if savedState.fpsBoost then
         fpsBoostEnabled = true
         fpsBoostBtn.Text = "FPS Boost: เปิด"
@@ -1664,8 +1576,7 @@ player.CharacterAdded:Connect(function(nc)
         fpsBoostBtn.Text = "FPS Boost: ปิด"
         fpsBoostBtn.BackgroundColor3 = COLOR_BG_LIGHT
     end
-
     for k in pairs(dirs) do dirs[k] = false end
 end)
 
-print("Boom script V4.6 CLEAN loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
+print("Boom script V4.7 loaded OK | By Boomxico | Platform:", isPC and "PC" or (isMobile and "Mobile" or "Other"))
