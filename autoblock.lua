@@ -1,7 +1,8 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Auto Block V2.1 | Test Edition + Kill Switch                 ║
--- ║  Trigger: HandicapService.RE.Hit                              ║
--- ║  Action:  Face + Hold Block                                   ║
+-- ║  Auto Block V2.2 | Debug Edition                              ║
+-- ║  - Debug ทุกขั้นตอน                                          ║
+-- ║  - Verbose log                                                ║
+-- ║  - Fix: args handling + cooldown                              ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 
 local Players = game:GetService("Players")
@@ -15,24 +16,14 @@ local LP = Players.LocalPlayer
 -- CONFIG
 -- ═══════════════════════════════════════════
 local Config = {
-    -- ระยะสูงสุดที่จะ auto block
-    MaxDistance = 25,
-    
-    -- ระยะเวลาที่ block ค้างไว้ (ms) หลัง trigger
-    BlockHoldMs = 300,
-    
-    -- Fire Activated ซ้ำทุกกี่ ms (hold)
-    ReFireIntervalMs = 50,
-    
-    -- Cooldown ระหว่าง trigger
-    TriggerCooldownMs = 80,
-    
-    -- Face
-    FaceLerp = 1.0,     -- 1.0 = หันทันที
-    
-    -- Debug
+    MaxDistance = 50,          -- ★ เพิ่มเป็น 50 (เผื่อผู้ตีอยู่ไกล)
+    BlockHoldMs = 400,         -- ★ เพิ่มเป็น 400
+    ReFireIntervalMs = 40,     -- ★ เร็วขึ้น
+    TriggerCooldownMs = 30,    -- ★ ลดเป็น 30
+    FaceLerp = 1.0,
     Debug = true,
-    Verbose = false,
+    Verbose = true,            -- ★ เปิด verbose
+    LogSkips = true,           -- ★ log ทุก skip + เหตุผล
 }
 
 -- ═══════════════════════════════════════════
@@ -52,11 +43,7 @@ local BlockActivated = findRemote("Knit.Knit.Services.BlockService.RE.Activated"
 local BlockDeactivated = findRemote("Knit.Knit.Services.BlockService.RE.Deactivated")
 
 if not HitRemote then
-    warn("[AB V2.1] ❌ ไม่เจอ HandicapService.RE.Hit")
-    return
-end
-if not BlockActivated then
-    warn("[AB V2.1] ❌ ไม่เจอ BlockService.RE.Activated")
+    warn("[AB V2.2] ❌ ไม่เจอ HitRemote")
     return
 end
 
@@ -67,16 +54,16 @@ local State = {
     Enabled = false,
     Blocking = false,
     LastTrigger = 0,
-    LastBlockFire = 0,
     TriggerCount = 0,
     BlockFireCount = 0,
     SkipCount = 0,
     LastAttacker = nil,
     LastDistance = 0,
-    LastTriggerTime = 0,
+    LastSkipReason = nil,
     HitConn = nil,
     BlockThread = nil,
     Destroyed = false,
+    AllHits = {},          -- ★ เก็บทุก hit ดิบ
 }
 
 -- ═══════════════════════════════════════════
@@ -84,11 +71,19 @@ local State = {
 -- ═══════════════════════════════════════════
 local function log(...)
     if Config.Debug then
-        local parts = {"[AB V2.1]"}
+        local parts = {"[AB V2.2]"}
         for _, v in ipairs({...}) do
             table.insert(parts, tostring(v))
         end
         print(table.concat(parts, " "))
+    end
+end
+
+local function logSkip(reason)
+    State.SkipCount = State.SkipCount + 1
+    State.LastSkipReason = reason
+    if Config.LogSkips then
+        log("⏭️  SKIP:", reason)
     end
 end
 
@@ -131,11 +126,13 @@ local function fireRelease()
 end
 
 -- ═══════════════════════════════════════════
--- BLOCK HOLD LOGIC
+-- BLOCK HOLD
 -- ═══════════════════════════════════════════
 local function startBlockHold()
-    -- ถ้ากำลัง block อยู่ ไม่ต้องเริ่มใหม่
-    if State.Blocking then return end
+    if State.Blocking then
+        if Config.Verbose then log("(block already active)") end
+        return
+    end
 
     State.Blocking = true
 
@@ -151,78 +148,131 @@ local function startBlockHold()
         do
             fireBlock()
             State.BlockFireCount = State.BlockFireCount + 1
-            State.LastBlockFire = tick()
             task.wait(refireSec)
         end
 
-        -- Release
         fireRelease()
         State.Blocking = false
-        if Config.Verbose then
-            log(string.format("🔓 Block released (fired %d times)", State.BlockFireCount))
-        end
     end)
 end
 
 -- ═══════════════════════════════════════════
--- AUTO BLOCK TRIGGER
+-- AUTO BLOCK — Debug ทุกขั้นตอน
 -- ═══════════════════════════════════════════
-local function onHit(attacker)
+local function onHit(...)
     if State.Destroyed then return end
-    if not State.Enabled then return end
 
-    -- Cooldown check
-    local now = tick()
-    if now - State.LastTrigger < (Config.TriggerCooldownMs / 1000) then
-        State.SkipCount = State.SkipCount + 1
+    -- ★★★ เก็บ args ดิบทุกครั้ง ★★★
+    local rawArgs = {...}
+    table.insert(State.AllHits, {
+        time = os.date("%H:%M:%S.%3f"),
+        tick = tick(),
+        argCount = #rawArgs,
+        argTypes = (function()
+            local t = {}
+            for i, v in ipairs(rawArgs) do
+                t[i] = typeof(v) .. (typeof(v) == "Instance" and (":" .. v.ClassName) or "")
+            end
+            return t
+        end)(),
+    })
+    if #State.AllHits > 100 then table.remove(State.AllHits, 1) end
+
+    -- Verbose: log ทุก hit ที่เข้ามา
+    if Config.Verbose then
+        local sig = {}
+        for i, v in ipairs(rawArgs) do
+            local vt = typeof(v)
+            if vt == "Instance" then
+                table.insert(sig, string.format("arg%d=%s:%s", i, v.ClassName, v.Name))
+            else
+                table.insert(sig, string.format("arg%d=%s:%s", i, vt, tostring(v):sub(1,30)))
+            end
+        end
+        log("📥 HIT:", table.concat(sig, " | "))
+    end
+
+    if not State.Enabled then
+        if Config.Verbose then log("  (disabled — ignore)") end
         return
     end
 
-    -- กรอง Instance
-    if typeof(attacker) ~= "Instance" then
-        State.SkipCount = State.SkipCount + 1
+    -- ★★★ หา Instance ใน args ทุกตัว ★★★
+    local attacker = nil
+    for i, v in ipairs(rawArgs) do
+        if typeof(v) == "Instance" then
+            if v:IsA("Model") then
+                -- Model = candidate
+                attacker = v
+                break
+            end
+        end
+    end
+
+    if not attacker then
+        logSkip("no Model in args")
         return
     end
-    if not attacker:IsA("Model") then
-        State.SkipCount = State.SkipCount + 1
-        return
-    end
+
+    -- Skip: ตัวเอง
     if attacker.Name == LP.Name then
-        State.SkipCount = State.SkipCount + 1
+        logSkip("attacker = self")
         return
     end
 
-    -- Distance check
+    -- Skip: ผู้เล่น
+    if Players:GetPlayerFromCharacter(attacker) then
+        local plr = Players:GetPlayerFromCharacter(attacker)
+        if plr == LP then
+            logSkip("attacker player = self")
+            return
+        end
+    end
+
+    -- Cooldown
+    local now = tick()
+    local since = now - State.LastTrigger
+    if since < (Config.TriggerCooldownMs / 1000) then
+        logSkip(string.format("cooldown (%.0fms < %dms)",
+            since * 1000, Config.TriggerCooldownMs))
+        return
+    end
+
+    -- HRP check
     local myHRP = getMyHRP()
     local atkHRP = getAttackerHRP(attacker)
-    if not myHRP or not atkHRP then
-        State.SkipCount = State.SkipCount + 1
+
+    if not myHRP then
+        logSkip("no myHRP")
+        return
+    end
+    if not atkHRP then
+        logSkip("no atkHRP (attacker=" .. attacker.Name .. ")")
         return
     end
 
+    -- Distance
     local dist = (atkHRP.Position - myHRP.Position).Magnitude
     if dist > Config.MaxDistance then
-        State.SkipCount = State.SkipCount + 1
+        logSkip(string.format("too far (%.1f > %d)", dist, Config.MaxDistance))
         return
     end
 
-    -- ★★★ ทำ auto block ★★★
+    -- ★★★ PASS — ทำ Auto Block ★★★
     State.LastTrigger = now
     State.TriggerCount = State.TriggerCount + 1
     State.LastAttacker = attacker.Name
     State.LastDistance = math.floor(dist)
-    State.LastTriggerTime = os.date("%H:%M:%S")
+    State.LastSkipReason = nil
 
     -- 1. หันหน้า
     faceTo(atkHRP.Position)
 
-    -- 2. เริ่ม block hold
+    -- 2. Block hold
     startBlockHold()
 
-    if Config.Debug then
-        log(string.format("🚨 BLOCK #%d ← %s (%.1f studs)",
-            State.TriggerCount, attacker.Name, dist))
-    end
+    log(string.format("🚨 BLOCK #%d ← %s (%.1f studs)",
+        State.TriggerCount, attacker.Name, dist))
 end
 
 -- ═══════════════════════════════════════════
@@ -230,80 +280,52 @@ end
 -- ═══════════════════════════════════════════
 local function start()
     if State.Enabled or State.Destroyed then return end
-
     State.HitConn = HitRemote.OnClientEvent:Connect(onHit)
-
     State.Enabled = true
     log("🟢 Auto Block เปิด")
-    updateGui()
+    if updateGui then updateGui() end
 end
 
 local function stop()
     if not State.Enabled then return end
-
     if State.HitConn then
         State.HitConn:Disconnect()
         State.HitConn = nil
     end
-
-    -- หยุด block thread
     State.Blocking = false
     if State.BlockThread then
         pcall(function() task.cancel(State.BlockThread) end)
         State.BlockThread = nil
     end
-
     fireRelease()
     State.Enabled = false
     log("🔴 Auto Block ปิด")
-    updateGui()
+    if updateGui then updateGui() end
 end
 
--- ═══════════════════════════════════════════
--- KILL SWITCH — ปิดสคริปต์ทั้งหมด
--- ═══════════════════════════════════════════
 local function destroy()
-    log("💀 DESTROY — ปิดสคริปต์ทั้งหมด")
-
+    log("💀 DESTROY")
     State.Destroyed = true
     stop()
-
-    -- disconnect ทั้งหมด
     if State.HitConn then
         pcall(function() State.HitConn:Disconnect() end)
-        State.HitConn = nil
     end
-
-    -- kill threads
     if State.BlockThread then
         pcall(function() task.cancel(State.BlockThread) end)
-        State.BlockThread = nil
     end
-
-    -- release block
     pcall(fireRelease)
-
-    -- ลบ GUI
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
-        local gui = pg:FindFirstChild("ABV21")
-        if gui then
-            pcall(function() gui:Destroy() end)
-        end
+        local g = pg:FindFirstChild("ABV22")
+        if g then pcall(function() g:Destroy() end) end
     end
-
-    -- clear global
-    if _G.AB_V21 then
-        _G.AB_V21 = nil
-    end
-
-    print("[AB V2.1] 💀 สคริปต์ถูกปิดแล้ว")
+    _G.AB_V22 = nil
 end
 
 -- ═══════════════════════════════════════════
 -- GUI
 -- ═══════════════════════════════════════════
-local gui, mainBtn, statusLbl, statsLbl, killBtn
+local gui, mainBtn, statusLbl, statsLbl, hitsLbl, killBtn
 
 function updateGui()
     if not mainBtn then return end
@@ -322,20 +344,18 @@ end
 
 local function buildGui()
     local pg = LP:WaitForChild("PlayerGui")
-
-    local old = pg:FindFirstChild("ABV21")
+    local old = pg:FindFirstChild("ABV22")
     if old then old:Destroy() end
 
     gui = Instance.new("ScreenGui")
-    gui.Name = "ABV21"
+    gui.Name = "ABV22"
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.Parent = pg
 
-    -- Main button
     mainBtn = Instance.new("TextButton")
-    mainBtn.Size = UDim2.new(0, 150, 0, 74)
-    mainBtn.Position = UDim2.new(0, 20, 0.35, 0)
+    mainBtn.Size = UDim2.new(0, 170, 0, 74)
+    mainBtn.Position = UDim2.new(0, 20, 0.3, 0)
     mainBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
     mainBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     mainBtn.Text = "AUTO BLOCK\n🔴 OFF"
@@ -348,16 +368,9 @@ local function buildGui()
     mc.CornerRadius = UDim.new(0, 12)
     mc.Parent = mainBtn
 
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(255, 255, 255)
-    stroke.Thickness = 2
-    stroke.Transparency = 0.5
-    stroke.Parent = mainBtn
-
-    -- Status
     statusLbl = Instance.new("TextLabel")
-    statusLbl.Size = UDim2.new(0, 150, 0, 24)
-    statusLbl.Position = UDim2.new(0, 20, 0.35, 78)
+    statusLbl.Size = UDim2.new(0, 170, 0, 24)
+    statusLbl.Position = UDim2.new(0, 20, 0.3, 78)
     statusLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     statusLbl.BackgroundTransparency = 0.3
     statusLbl.TextColor3 = Color3.fromRGB(255, 150, 150)
@@ -369,10 +382,9 @@ local function buildGui()
     sc.CornerRadius = UDim.new(0, 6)
     sc.Parent = statusLbl
 
-    -- Stats
     statsLbl = Instance.new("TextLabel")
-    statsLbl.Size = UDim2.new(0, 150, 0, 56)
-    statsLbl.Position = UDim2.new(0, 20, 0.35, 104)
+    statsLbl.Size = UDim2.new(0, 170, 0, 68)
+    statsLbl.Position = UDim2.new(0, 20, 0.3, 104)
     statsLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     statsLbl.BackgroundTransparency = 0.3
     statsLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -386,10 +398,27 @@ local function buildGui()
     stc.CornerRadius = UDim.new(0, 6)
     stc.Parent = statsLbl
 
-    -- Kill Switch button
+    -- Hits log panel
+    hitsLbl = Instance.new("TextLabel")
+    hitsLbl.Size = UDim2.new(0, 170, 0, 80)
+    hitsLbl.Position = UDim2.new(0, 20, 0.3, 176)
+    hitsLbl.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    hitsLbl.BackgroundTransparency = 0.3
+    hitsLbl.TextColor3 = Color3.fromRGB(150, 200, 255)
+    hitsLbl.Text = "Hits: 0"
+    hitsLbl.TextSize = 10
+    hitsLbl.Font = Enum.Font.Code
+    hitsLbl.TextWrapped = true
+    hitsLbl.TextYAlignment = Enum.TextYAlignment.Top
+    hitsLbl.TextXAlignment = Enum.TextXAlignment.Left
+    hitsLbl.Parent = gui
+    local hc = Instance.new("UICorner")
+    hc.CornerRadius = UDim.new(0, 6)
+    hc.Parent = hitsLbl
+
     killBtn = Instance.new("TextButton")
-    killBtn.Size = UDim2.new(0, 150, 0, 34)
-    killBtn.Position = UDim2.new(0, 20, 0.35, 164)
+    killBtn.Size = UDim2.new(0, 170, 0, 34)
+    killBtn.Position = UDim2.new(0, 20, 0.3, 260)
     killBtn.BackgroundColor3 = Color3.fromRGB(120, 20, 20)
     killBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     killBtn.Text = "💀 ปิดสคริปต์"
@@ -401,12 +430,6 @@ local function buildGui()
     kc.CornerRadius = UDim.new(0, 8)
     kc.Parent = killBtn
 
-    local kstroke = Instance.new("UIStroke")
-    kstroke.Color = Color3.fromRGB(255, 50, 50)
-    kstroke.Thickness = 1.5
-    kstroke.Parent = killBtn
-
-    -- Click handlers
     mainBtn.MouseButton1Click:Connect(function()
         if State.Destroyed then return end
         if State.Enabled then stop() else start() end
@@ -414,8 +437,8 @@ local function buildGui()
 
     killBtn.MouseButton1Click:Connect(function()
         if State.Destroyed then return end
-        killBtn.Text = "💀 กำลังปิด..."
-        task.wait(0.3)
+        killBtn.Text = "💀 ปิด..."
+        task.wait(0.2)
         destroy()
     end)
 
@@ -439,17 +462,14 @@ local function buildGui()
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
                          or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            local newPos = UDim2.new(
+            local np = UDim2.new(
                 startPos.X.Scale, startPos.X.Offset + delta.X,
                 startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            mainBtn.Position = newPos
-            -- sync
-            statusLbl.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset,
-                newPos.Y.Scale, newPos.Y.Offset + 78)
-            statsLbl.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset,
-                newPos.Y.Scale, newPos.Y.Offset + 104)
-            killBtn.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset,
-                newPos.Y.Scale, newPos.Y.Offset + 164)
+            mainBtn.Position = np
+            statusLbl.Position = UDim2.new(np.X.Scale, np.X.Offset, np.Y.Scale, np.Y.Offset + 78)
+            statsLbl.Position = UDim2.new(np.X.Scale, np.X.Offset, np.Y.Scale, np.Y.Offset + 104)
+            hitsLbl.Position = UDim2.new(np.X.Scale, np.X.Offset, np.Y.Scale, np.Y.Offset + 176)
+            killBtn.Position = UDim2.new(np.X.Scale, np.X.Offset, np.Y.Scale, np.Y.Offset + 260)
         end
     end)
 
@@ -459,12 +479,26 @@ local function buildGui()
             task.wait(0.3)
             if statsLbl then
                 statsLbl.Text = string.format(
-                    "Triggers: %d\nBlock Fires: %d\nSkip: %d\nLast: %s | %.0f studs",
+                    "Triggers: %d\nFires: %d | Skip: %d\nReason: %s\nLast: %s | %.0f",
                     State.TriggerCount,
                     State.BlockFireCount,
                     State.SkipCount,
+                    State.LastSkipReason or "-",
                     State.LastAttacker or "-",
                     State.LastDistance)
+            end
+            if hitsLbl then
+                local lines = {}
+                local total = #State.AllHits
+                local start = math.max(1, total - 5)
+                for i = start, total do
+                    local h = State.AllHits[i]
+                    table.insert(lines, string.format("[%s] %s",
+                        h.time,
+                        table.concat(h.argTypes or {}, ",")))
+                end
+                hitsLbl.Text = "📥 Hits (" .. total .. "):\n" ..
+                    table.concat(lines, "\n")
             end
         end
     end)
@@ -474,13 +508,7 @@ end
 
 buildGui()
 
--- ═══════════════════════════════════════════
--- AUTO-START (optional)
--- ═══════════════════════════════════════════
--- start()  -- เปิด comment ถ้าอยากให้เปิดอัตโนมัติ
-
--- Export API
-_G.AB_V21 = {
+_G.AB_V22 = {
     start = start,
     stop = stop,
     destroy = destroy,
@@ -489,13 +517,9 @@ _G.AB_V21 = {
 }
 
 print("═══════════════════════════════════════════")
-print("✅ Auto Block V2.1 | Test Edition")
-print("   Trigger: HandicapService.RE.Hit")
-print("   Action:  Face + Hold Block 300ms")
-print("   Config:")
-print(string.format("     MaxDistance: %d studs", Config.MaxDistance))
-print(string.format("     BlockHold: %d ms", Config.BlockHoldMs))
-print(string.format("     ReFireInterval: %d ms", Config.ReFireIntervalMs))
-print("   GUI: กดปุ่ม AUTO BLOCK เพื่อเปิด/ปิด")
-print("   API: _G.AB_V21.start() / .stop() / .destroy()")
+print("✅ Auto Block V2.2 | Debug Edition")
+print("   MaxDistance:", Config.MaxDistance)
+print("   BlockHoldMs:", Config.BlockHoldMs)
+print("   TriggerCooldown:", Config.TriggerCooldownMs)
+print("   GUI แสดง Hits ล่าสุด 5 ครั้ง")
 print("═══════════════════════════════════════════")
