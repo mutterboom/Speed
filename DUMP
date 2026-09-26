@@ -1,0 +1,128 @@
+-- ============================================
+-- Simple SaveInstance (Educational Only)
+-- For: Delta Executor PC (ต้องใช้ writefile)
+-- ============================================
+local HttpService = game:GetService("HttpService")
+
+-- ★ เริ่มจับเวลา
+local startTime = tick()
+print("[Dump] เริ่ม dump...")
+
+-- ★ โครงสร้างเก็บข้อมูล
+local data = {
+    Info = {
+        GameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name,
+        PlaceId = game.PlaceId,
+        JobId = game.JobId,
+        DumpTime = os.date("%Y-%m-%d %H:%M:%S")
+    },
+    Workspace = {},
+    ReplicatedStorage = {},
+    Lighting = {},
+    Players = {}
+}
+
+-- ★ ฟังก์ชันแปลง Properties ของ Object
+local function getProperties(obj)
+    local props = {}
+    local success, err = pcall(function()
+        -- เก็บ Properties พื้นฐาน
+        if obj:IsA("BasePart") then
+            props.ClassName = obj.ClassName
+            props.Name = obj.Name
+            props.Position = tostring(obj.Position)
+            props.Size = tostring(obj.Size)
+            props.Rotation = tostring(obj.Rotation)
+            props.Color = tostring(obj.Color)
+            props.Material = tostring(obj.Material)
+            props.Transparency = obj.Transparency
+            props.CanCollide = obj.CanCollide
+            props.Anchored = obj.Anchored
+        elseif obj:IsA("Model") then
+            props.ClassName = "Model"
+            props.Name = obj.Name
+            props.PrimaryPart = obj.PrimaryPart and obj.PrimaryPart.Name or "nil"
+        elseif obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
+            props.ClassName = obj.ClassName
+            props.Name = obj.Name
+            props.Source = "[Script Content Not Accessible]"
+        elseif obj:IsA("Folder") then
+            props.ClassName = "Folder"
+            props.Name = obj.Name
+        elseif obj:IsA("StringValue") or obj:IsA("NumberValue") or obj:IsA("BoolValue") then
+            props.ClassName = obj.ClassName
+            props.Name = obj.Name
+            props.Value = tostring(obj.Value)
+        end
+    end)
+    if not success then
+        props.Error = "Cannot read: " .. tostring(err)
+    end
+    return props
+end
+
+-- ★ ฟังก์ชัน dump ทั่วไป
+local function dumpContainer(container)
+    local result = {}
+    local count = 0
+    for _, obj in ipairs(container:GetDescendants()) do
+        local props = getProperties(obj)
+        if next(props) then
+            table.insert(result, props)
+            count = count + 1
+        end
+    end
+    return result, count
+end
+
+-- ★ Dump Workspace
+print("[Dump] กำลัง dump Workspace...")
+local wsData, wsCount = dumpContainer(game.Workspace)
+data.Workspace = wsData
+print("[Dump] Workspace: " .. wsCount .. " objects")
+
+-- ★ Dump ReplicatedStorage
+print("[Dump] กำลัง dump ReplicatedStorage...")
+local rsData, rsCount = dumpContainer(game:GetService("ReplicatedStorage"))
+data.ReplicatedStorage = rsData
+print("[Dump] ReplicatedStorage: " .. rsCount .. " objects")
+
+-- ★ Dump Lighting
+print("[Dump] กำลัง dump Lighting...")
+local liData, liCount = dumpContainer(game:GetService("Lighting"))
+data.Lighting = liData
+print("[Dump] Lighting: " .. liCount .. " objects")
+
+-- ★ Dump Players (ชื่อเท่านั้น)
+print("[Dump] กำลัง dump Players...")
+for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
+    table.insert(data.Players, {
+        Name = plr.Name,
+        DisplayName = plr.DisplayName,
+        UserId = plr.UserId
+    })
+end
+print("[Dump] Players: " .. #data.Players)
+
+-- ★ แปลงเป็น JSON
+print("[Dump] กำลังแปลงเป็น JSON...")
+local json = HttpService:JSONEncode(data)
+
+-- ★ บันทึกไฟล์
+local fileName = "map_dump_" .. game.PlaceId .. "_" .. os.time() .. ".json"
+local success, err = pcall(function()
+    writefile(fileName, json)
+end)
+
+if success then
+    local elapsed = tick() - startTime
+    print("========================================")
+    print("[Dump] สำเร็จ!")
+    print("[Dump] ไฟล์: " .. fileName)
+    print("[Dump] ขนาด: " .. math.floor(#json / 1024) .. " KB")
+    print("[Dump] เวลา: " .. string.format("%.2f", elapsed) .. " วินาที")
+    print("========================================")
+else
+    warn("[Dump] ล้มเหลว: " .. tostring(err))
+    warn("[Dump] ต้องใช้ Delta PC + writefile")
+end
