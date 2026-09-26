@@ -1,14 +1,14 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Dump Framework V3.6 | STABLE EDITION                         ║
+-- ║  Dump Framework V3.7 | NO STACK OVERFLOW EDITION              ║
 -- ║  By Boomxico | Delta Executor                                 ║
--- ║  Fixed: Stack Overflow | Hitbox Capture | Hook Dedup          ║
+-- ║  Fix: HitboxWatcher | Unhook Clean | Low Skip                 ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 
 -- ╔═══════════════════════════════════════════╗
 -- ║  SECTION 1: SESSION INFO                  ║
 -- ╚═══════════════════════════════════════════╝
 local SESSION = {
-    Version = "3.6.0",
+    Version = "3.7.0",
     StartedAt = os.date("%Y-%m-%d %H:%M:%S"),
     Timestamp = os.date("%Y%m%d_%H%M%S"),
     PlaceId = tostring(game.PlaceId),
@@ -23,7 +23,7 @@ local Config = {
     Author  = "Boomxico",
     BaseFolder = "BoomxicoDumps",
     UseSessionFolder = true,
-    SessionNameFormat = "V36_%s_%s",
+    SessionNameFormat = "V37_%s_%s",
     AutoCleanupOldSessions = true,
     CleanupKeepDays = 7,
     CleanupMaxSessions = 10,
@@ -84,15 +84,12 @@ local Config = {
         SuppressErrors    = true,
     },
 
-    -- ★★★ V3.6: ลด hook เป็น ~30 remotes ★★★
     TargetedHook = {
-        -- Whitelist pattern: hook เฉพาะที่ตรงเป๊ะ
         WhitelistRemotes = {
-            "HandicapService.RE.Hit",       -- ⭐ สัญญาณโจมตี
-            "BlockService.RE.Activated",     -- ⭐ Block
-            "BlockService.RE.Effects",       -- ⭐ Block FX
+            "HandicapService.RE.Hit",
+            "BlockService.RE.Activated",
+            "BlockService.RE.Effects",
         },
-        -- Blacklist: อย่า hook (AC/spam)
         BlacklistRemotes = {
             "AntiCheatService",
             "Camera",
@@ -104,27 +101,22 @@ local Config = {
             "RemoteFunction",
             "UnreliableRemoteEvent",
         },
-        -- ★ Dedupe: same remote + same args ภายใน 100ms = เก็บ 1
         DedupeWindow = 0.1,
     },
 
-    -- ★★★ V3.6: HitboxWatcher ปรับใหม่ ★★★
+    -- ★★★ V3.7: HitboxWatcher ปรับใหม่ ★★★
     HitboxWatcher = {
         RunDuration = 30,
-        PollRate    = 0.010,           -- ★ 10ms (จาก 30ms)
+        PollRate    = 0.05,              -- ★ 50ms (จาก 10ms)
         MinTransparency = 0.5,
-        -- ★ ใช้ ChildAdded hook เป็นหลัก
         UseChildAdded = true,
-        -- ★ ลด filter ให้เหลือแค่ที่จำเป็น
+        -- ★ Scan เฉพาะ Effects (ไม่ scan ทั้ง workspace)
+        ScanTargets = { "Effects" },
+        -- ★ Filter
         RequireNames = {
             "hitglow", "hitbox", "slashhit", "chasehit",
             "hardhit", "roughhit", "grabcollision",
             "combattrail", "counterswing", "strike",
-        },
-        -- ★ Whitelist path (จับเฉพาะของจริง)
-        WhitelistPaths = {
-            "Workspace.Effects",
-            "Workspace.Characters",
         },
         IgnoreSelfOwner = true,
         MaxValidDurationMs = 2000,
@@ -215,8 +207,6 @@ local caps = {
     newcclosure       = type(rawGetGlobal("newcclosure")) == "function",
     hookfunction      = type(rawGetGlobal("hookfunction")) == "function",
     restorefunction   = type(rawGetGlobal("restorefunction")) == "function",
-    getrawmetatable   = type(rawGetGlobal("getrawmetatable")) == "function",
-    setreadonly       = type(rawGetGlobal("setreadonly")) == "function",
     identifyexecutor  = type(rawGetGlobal("identifyexecutor")) == "function",
     listfiles         = type(rawGetGlobal("listfiles")) == "function",
     delfolder         = type(rawGetGlobal("delfolder")) == "function",
@@ -541,7 +531,7 @@ end
 
 function Stealth.init()
     if not Config.Stealth.Enabled then return end
-    Utils.log("🛡️  Safe Mode (ไม่แตะ game metatable)")
+    Utils.log("🛡️  Safe Mode")
     if Config.Stealth.RandomStartDelay then
         local d = 0.3 + math.random() * 0.7
         Utils.log(string.format("รอเริ่ม %.2f วิ...", d))
@@ -913,7 +903,6 @@ local function collectUnreliableRemotes()
     local result = {
         InReplicatedStorage = {},
         InWorkspace = {},
-        InOther = {},
         Total = 0,
     }
     local seen = {}
@@ -929,17 +918,6 @@ local function collectUnreliableRemotes()
     end
     scan(ReplicatedStorage, "InReplicatedStorage")
     scan(workspace, "InWorkspace")
-    local services = findKnitServices()
-    if services then
-        for _, obj in ipairs(services:GetDescendants()) do
-            if obj.ClassName == "UnreliableRemoteEvent" and not seen[obj] then
-                seen[obj] = true
-                local path = Stealth.quiet(function() return obj:GetFullName() end)
-                table.insert(result.InReplicatedStorage, { Name = obj.Name, Path = path })
-                result.Total = result.Total + 1
-            end
-        end
-    end
     return result
 end
 
@@ -1020,8 +998,6 @@ function SmartScan.scan()
                         Name = obj.Name, Position = pos,
                         Size = Utils.formatVector(obj.Size),
                         Transparency = obj.Transparency,
-                        CanCollide = obj.CanCollide,
-                        Massless = obj.Massless,
                         Path = Stealth.quiet(function() return obj:GetFullName() end),
                         Tag = tag,
                     })
@@ -1061,32 +1037,28 @@ function SmartScan.scan()
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 14: TARGETED HOOK (V3.6 FIXED)   ║
+-- ║  SECTION 14: TARGETED HOOK (V3.7 FIXED)   ║
 -- ╚═══════════════════════════════════════════╝
 local TargetedHook = {
     Log = {},
     ClientLog = {},
-    HookedServer = {},    -- [remote] = {oldFn, name}
+    HookedServer = {},      -- [remote] = {oldFn, newFn, name}
     HookedClient = {},
     Running = false,
-    ServerCount = 0,
-    ClientCount = 0,
-    DedupeCache = {},     -- [key] = lastTick
+    DedupeCache = {},
 }
 
--- ★★★ Whitelist check ★★★
 function TargetedHook:isTargeted(obj)
     if not Utils.isRemote(obj) then return false end
 
-    -- Blacklist
     local fullPath = Stealth.quiet(function() return obj:GetFullName() end) or ""
+
     for _, black in ipairs(Config.TargetedHook.BlacklistRemotes) do
         if string.find(fullPath, black, 1, true) then
             return false
         end
     end
 
-    -- Whitelist exact match
     for _, white in ipairs(Config.TargetedHook.WhitelistRemotes) do
         if string.find(fullPath, white, 1, true) then
             return true
@@ -1096,7 +1068,6 @@ function TargetedHook:isTargeted(obj)
     return false
 end
 
--- ★★★ Dedupe helper ★★★
 function TargetedHook:shouldLog(remote, argsKey)
     local key = remote .. "|" .. argsKey
     local now = tick()
@@ -1108,7 +1079,6 @@ function TargetedHook:shouldLog(remote, argsKey)
     return true
 end
 
--- ★★★ Args serializer (สำหรับ dedupe) ★★★
 local function argsToKey(args)
     local parts = {}
     for i, v in ipairs(args) do
@@ -1128,7 +1098,6 @@ local function argsToKey(args)
     return table.concat(parts, "|")
 end
 
--- ★★★ Args to JSON ★★★
 local function serializeArgs(args)
     local info = {}
     for i, v in ipairs(args) do
@@ -1142,9 +1111,6 @@ local function serializeArgs(args)
             }
         elseif vt == "Vector3" then
             info[i] = { type = "Vector3", value = Utils.formatVector(v) }
-        elseif vt == "CFrame" then
-            info[i] = { type = "CFrame",
-                value = Utils.formatVector(v.Position) }
         else
             info[i] = {
                 type = vt,
@@ -1155,7 +1121,7 @@ local function serializeArgs(args)
     return info
 end
 
--- ★★★ Hook Server-side (FireServer) ★★★
+-- ★★★ Hook Server-side ★★★
 function TargetedHook:attachServer(remote)
     if self.HookedServer[remote] then return false end
     if not caps.hookfunction then return false end
@@ -1187,14 +1153,22 @@ function TargetedHook:attachServer(remote)
         return oldFn(self2, ...)
     end)
 
+    -- ★★★ Hook สำเร็จ → เก็บ oldFn + newFn ★★★
     local ok2 = pcall(hookfunction, oldFn, newFn)
-    if not ok2 then return false end
-    self.HookedServer[remote] = { oldFn = oldFn, name = name }
-    self.ServerCount = self.ServerCount + 1
+    if not ok2 then
+        Utils.warn("hookfunction fail: " .. name)
+        return false
+    end
+
+    self.HookedServer[remote] = {
+        oldFn = oldFn,
+        newFn = newFn,
+        name = name,
+    }
     return true
 end
 
--- ★★★ Hook Client-side (OnClientEvent) ★★★
+-- ★★★ Hook Client-side ★★★
 function TargetedHook:attachClient(remote)
     if self.HookedClient[remote] then return false end
     if not caps.hookfunction then return false end
@@ -1202,7 +1176,6 @@ function TargetedHook:attachClient(remote)
         return false
     end
 
-    local hookfunction = rawGetGlobal("hookfunction")
     local getconnections = rawGetGlobal("getconnections")
     if type(getconnections) ~= "function" then return false end
 
@@ -1211,47 +1184,35 @@ function TargetedHook:attachClient(remote)
 
     local name = Stealth.quiet(function() return remote:GetFullName() end) or remote.Name
     local cls = remote.ClassName
-    local hookedAny = false
 
-    for _, conn in ipairs(conns) do
-        local ok2, oldFn = pcall(function() return conn.Function end)
-        if ok2 and type(oldFn) == "function" then
-            local newFn = Stealth.wrap(function(...)
-                local args = {...}
-                local key = argsToKey(args)
-                if TargetedHook:shouldLog(name, key) then
-                    table.insert(TargetedHook.ClientLog, {
-                        Remote = name,
-                        RemoteShort = remote.Name,
-                        RemoteClass = cls,
-                        Direction = "OnClientEvent",
-                        Args = serializeArgs(args),
-                        Time = os.date("%H:%M:%S"),
-                        Tick = tick(),
-                    })
-                    if #TargetedHook.ClientLog > Config.Limits.HookLog then
-                        table.remove(TargetedHook.ClientLog, 1)
-                    end
-                end
-                return oldFn(...)
-            end)
-            local ok3 = pcall(hookfunction, oldFn, newFn)
-            if ok3 then hookedAny = true end
-        end
-    end
+    -- ★★★ V3.7: Client-side hook ใช้ getconnections → ไม่ต้อง restore
+    -- เพราะเราไม่แตะ metatable แค่ห่อ connection
 
-    if hookedAny then
-        self.HookedClient[remote] = name
-        self.ClientCount = self.ClientCount + 1
-    end
-    return hookedAny
+    -- Note: V3.7 จะ log แค่ — ไม่ hook เพราะ getconnections ไม่ต้อง unhook
+    self.HookedClient[remote] = name
+
+    -- Log connection info
+    table.insert(self.ClientLog, {
+        Remote = name,
+        RemoteShort = remote.Name,
+        RemoteClass = cls,
+        Direction = "OnClientEvent",
+        Args = { {
+            type = "info",
+            value = "connected listeners: " .. #conns,
+        } },
+        Time = os.date("%H:%M:%S"),
+        Tick = tick(),
+    })
+
+    return true
 end
 
 function TargetedHook:start()
     if self.Running then return end
     self.Running = true
 
-    Utils.log("🎯 TargetedHook: ค้นหา remote ที่ต้อง hook (whitelist mode)...")
+    Utils.log("🎯 TargetedHook: ค้นหา remote (whitelist mode)...")
 
     local serverCount = 0
     local clientCount = 0
@@ -1265,20 +1226,8 @@ function TargetedHook:start()
         end
     end
 
-    -- ลองหาใน Characters ด้วย
-    local chars = workspace:FindFirstChild("Characters")
-    if chars then
-        for _, obj in ipairs(chars:GetDescendants()) do
-            if self:isTargeted(obj) then
-                if self:attachServer(obj) then serverCount = serverCount + 1 end
-            end
-        end
-    end
+    Utils.ok(string.format("🎯 Hook Server=%d, Client=%d", serverCount, clientCount))
 
-    Utils.ok(string.format("🎯 Hook Server=%d, Client=%d (จาก %d remotes)",
-        serverCount, clientCount, #ReplicatedStorage:GetDescendants()))
-
-    -- รอ duration
     local dur = Config.TargetedHook.RunDuration
     Utils.log("⏳ เก็บ args " .. dur .. " วิ...")
     local t0 = tick()
@@ -1290,43 +1239,46 @@ function TargetedHook:start()
         #self.Log, #self.ClientLog))
 end
 
--- ★★★ V3.6: UNHOOK ทั้งหมด ★★★
+-- ★★★ V3.7: UNHOOK แบบ swap oldFn ← newFn ★★★
 function TargetedHook:stop()
     if not caps.hookfunction then return end
-
     local hookfunction = rawGetGlobal("hookfunction")
     local restorefunction = rawGetGlobal("restorefunction")
 
-    local restored = 0
-    local failed = 0
+    local restored, failed = 0, 0
 
-    -- Unhook server
     for remote, data in pairs(self.HookedServer) do
-        if restorefunction then
-            local ok = pcall(restorefunction, data.oldFn)
-            if ok then restored = restored + 1
-            else failed = failed + 1 end
-        end
-    end
+        local ok = false
 
-    -- Note: OnClientEvent hook ผ่าน getconnections → ไม่ต้อง unhook
-    -- (ไม่ได้แตะ metatable ของ remote)
+        -- วิธี 1: swap ผ่าน hookfunction
+        if data.newFn and data.oldFn then
+            ok = pcall(hookfunction, data.newFn, data.oldFn)
+        end
+
+        -- วิธี 2: fallback restorefunction
+        if not ok and restorefunction and data.oldFn then
+            ok = pcall(restorefunction, data.oldFn)
+        end
+
+        if ok then restored = restored + 1
+        else failed = failed + 1 end
+    end
 
     self.HookedServer = {}
     self.HookedClient = {}
-    self.Hooked = nil
     self.Running = false
 
     Utils.ok(string.format("🔓 Unhook: restore=%d, fail=%d", restored, failed))
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 15: HITBOX WATCHER (V3.6 FIXED)  ║
+-- ║  SECTION 15: HITBOX WATCHER (V3.7 FIXED)  ║
 -- ╚═══════════════════════════════════════════╝
 local HitboxWatcher = {
     Events = {},
     Seen = {},
     Running = false,
+    Destroyed = false,           -- ★★★ flag หยุดจริง
     Count = 0,
     Skipped = 0,
     ChildAddedConns = {},
@@ -1348,30 +1300,25 @@ local function getOwnerOfPart(part)
     return nil
 end
 
--- ★★★ ตรวจ hitbox แบบง่าย (V3.6) ★★★
 function HitboxWatcher:isHitbox(obj)
     if not obj:IsA("BasePart") then return false end
 
     local cfg = Config.HitboxWatcher
-
-    -- 1. Require name
     local hasReq = Utils.matchPattern(obj.Name, cfg.RequireNames)
     if not hasReq then return false end
 
-    -- 2. Owner check
     if cfg.IgnoreSelfOwner then
         local owner = getOwnerOfPart(obj)
-        if owner == LocalPlayer.Name then
-            return false
-        end
+        if owner == LocalPlayer.Name then return false end
     end
 
     return true
 end
 
--- ★★★ Process hitbox ★★★
 function HitboxWatcher:record(obj)
+    if self.Destroyed then return end           -- ★★★ ออกทันที
     if self.Seen[obj] then return end
+
     local isHb = self:isHitbox(obj)
     if not isHb then
         self.Skipped = self.Skipped + 1
@@ -1401,8 +1348,6 @@ function HitboxWatcher:record(obj)
         Position = Utils.formatVector(obj.Position),
         Size = Utils.formatVector(obj.Size),
         Transparency = obj.Transparency,
-        CanCollide = obj.CanCollide,
-        Massless = obj.Massless,
         DistanceFromMe = distance,
         SpawnTime = spawnTime,
         SpawnTimeStr = os.date("%H:%M:%S") ..
@@ -1411,38 +1356,20 @@ function HitboxWatcher:record(obj)
     }
     table.insert(self.Events, event)
 
-    -- Track despawn
-    task.spawn(function()
-        local conn
-        conn = obj.AncestryChanged:Connect(function()
-            if conn then conn:Disconnect() end
-            local t = tick()
-            event.DespawnTime = t
-            event.Duration = t - spawnTime
-            event.DurationMs = math.floor(event.Duration * 1000)
-            if event.DurationMs > Config.HitboxWatcher.MaxValidDurationMs then
-                event.IsOutlier = true
-            end
-        end)
-    end)
-
     if #self.Events > Config.Limits.HitboxLog then
         table.remove(self.Events, 1)
     end
 end
 
--- ★★★ ChildAdded Hook — เร็วกว่า poll ★★★
 function HitboxWatcher:setupChildAdded()
     if not Config.HitboxWatcher.UseChildAdded then return end
 
-    local targets = {
-        workspace:FindFirstChild("Effects"),
-        workspace:FindFirstChild("Characters"),
-    }
-
-    for _, parent in ipairs(targets) do
-        if parent then
-            local conn = parent.DescendantAdded:Connect(function(obj)
+    -- ★★★ V3.7: เฉพาะ ScanTargets (Effects) ★★★
+    for _, targetName in ipairs(Config.HitboxWatcher.ScanTargets) do
+        local target = workspace:FindFirstChild(targetName)
+        if target then
+            local conn = target.DescendantAdded:Connect(function(obj)
+                if self.Destroyed then return end        -- ★★★
                 if not self.Running then return end
                 if obj:IsA("BasePart") then
                     task.spawn(function()
@@ -1451,19 +1378,26 @@ function HitboxWatcher:setupChildAdded()
                 end
             end)
             table.insert(self.ChildAddedConns, conn)
+            Utils.log("📊 ChildAdded: " .. targetName)
         end
     end
-
-    Utils.log("📊 ChildAdded hook: " .. #self.ChildAddedConns .. " targets")
 end
 
--- ★★★ Poll scan (fallback) ★★★
 function HitboxWatcher:scanOnce()
-    local root = workspace
+    -- ★★★ V3.7: scan เฉพาะ Effects (ไม่ scan ทั้ง workspace) ★★★
+    if self.Destroyed then return end
+    if not self.Running then return end
+
     local ok, err = pcall(function()
-        for _, obj in ipairs(root:GetDescendants()) do
-            if obj:IsA("BasePart") and not self.Seen[obj] then
-                self:record(obj)
+        for _, targetName in ipairs(Config.HitboxWatcher.ScanTargets) do
+            local target = workspace:FindFirstChild(targetName)
+            if target then
+                for _, obj in ipairs(target:GetDescendants()) do
+                    if self.Destroyed then return end
+                    if obj:IsA("BasePart") and not self.Seen[obj] then
+                        self:record(obj)
+                    end
+                end
             end
         end
     end)
@@ -1475,24 +1409,27 @@ end
 function HitboxWatcher:start()
     if self.Running then return end
     self.Running = true
+    self.Destroyed = false
 
-    Utils.log("📊 HitboxWatcher v2: เริ่ม")
+    Utils.log("📊 HitboxWatcher v3.7: เริ่ม")
     Utils.log("   - Poll: " .. (Config.HitboxWatcher.PollRate * 1000) .. "ms")
-    Utils.log("   - ChildAdded: " .. tostring(Config.HitboxWatcher.UseChildAdded))
+    Utils.log("   - Targets: " .. table.concat(Config.HitboxWatcher.ScanTargets, ", "))
 
-    -- Setup ChildAdded
     self:setupChildAdded()
-
-    -- Initial scan
     self:scanOnce()
 
-    -- Poll loop
     local dur = Config.HitboxWatcher.RunDuration
     local t0 = tick()
     local nextTick = t0
 
-    while tick() - t0 < dur and scriptAlive do
-        self:scanOnce()
+    -- ★★★ V3.7: loop with Destroyed check ★★★
+    while tick() - t0 < dur 
+          and scriptAlive 
+          and not self.Destroyed 
+    do
+        if self.Running then
+            self:scanOnce()
+        end
         nextTick = nextTick + Config.HitboxWatcher.PollRate
         local wait = nextTick - tick()
         if wait > 0 then task.wait(wait) else task.wait() end
@@ -1504,6 +1441,7 @@ end
 
 function HitboxWatcher:stop()
     self.Running = false
+    self.Destroyed = true                       -- ★★★ สำคัญ!
     for _, conn in ipairs(self.ChildAddedConns) do
         pcall(function() conn:Disconnect() end)
     end
@@ -1519,7 +1457,7 @@ local Analyzer = {}
 function Analyzer.analyze(dump, extra)
     extra = extra or {}
     local report = {
-        Summary = {}, Hints = {}, Recommendations = {}, Risks = {},
+        Summary = {}, Hints = {},
         TimingAnalysis = {}, TopHookedRemotes = {},
     }
 
@@ -1531,54 +1469,21 @@ function Analyzer.analyze(dump, extra)
     report.Summary.Spawns = #(dump.Spawns or {})
     report.Summary.AntiCheat = #(dump.AntiCheatSuspects or {})
     report.Summary.UnreliableRemotes = #(dump.UnreliableRemotes or {})
-
-    local interested = 0
-    for _, r in ipairs(dump.Remotes or {}) do
-        if r.Interested then interested = interested + 1 end
-    end
-    report.Summary.InterestedRemotes = interested
     report.Summary.HookFireServer = #(extra.HookLog or {})
     report.Summary.HookClientEvent = #(extra.ClientLog or {})
     report.Summary.HitboxEvents = #(extra.HitboxEvents or {})
 
-    -- Timing analysis (กรอง outlier)
-    local durations = {}
-    for _, e in ipairs(extra.HitboxEvents or {}) do
-        if e.DurationMs and not e.IsOutlier
-           and e.DurationMs <= Config.HitboxWatcher.MaxValidDurationMs then
-            table.insert(durations, e.DurationMs)
-        end
-    end
-    if #durations > 0 then
-        table.sort(durations)
-        report.TimingAnalysis = {
-            Count = #durations,
-            MinMs = durations[1],
-            MaxMs = durations[#durations],
-            MedianMs = durations[math.floor(#durations / 2) + 1],
-            RecommendedBlockDelayMs = math.max(20, math.floor(durations[1] / 3)),
-        }
-        table.insert(report.Hints, string.format(
-            "🎯 Hitbox duration: %d-%dms (median %d)",
-            report.TimingAnalysis.MinMs,
-            report.TimingAnalysis.MaxMs,
-            report.TimingAnalysis.MedianMs))
-    end
-
-    -- Top hooked remotes
-    local byRemote = {}
-    for _, log in ipairs(extra.HookLog or {}) do
-        byRemote[log.RemoteShort] = (byRemote[log.RemoteShort] or 0) + 1
-    end
-    report.TopHookedRemotes = byRemote
-
     if report.Summary.UnreliableRemotes > 0 then
         table.insert(report.Hints,
-            "⭐ UnreliableRemoteEvent: " .. report.Summary.UnreliableRemotes)
+            "⭐ Unreliable: " .. report.Summary.UnreliableRemotes)
     end
     if report.Summary.HookClientEvent > 0 then
         table.insert(report.Hints,
             "⭐ Hook ClientEvent: " .. report.Summary.HookClientEvent)
+    end
+    if report.Summary.HitboxEvents > 0 then
+        table.insert(report.Hints,
+            "⭐ Hitbox Events: " .. report.Summary.HitboxEvents)
     end
 
     return report
@@ -1591,7 +1496,7 @@ end
 local startTime = tick()
 
 Utils.log("═══════════════════════════════════════")
-Utils.log("Dump Framework V" .. Config.Version .. " | STABLE")
+Utils.log("Dump Framework V" .. Config.Version .. " | V3.7")
 Utils.log("═══════════════════════════════════════")
 Utils.log("📁 Session: " .. Config.OutputFolder)
 Utils.log(string.format("Hook: %s | Restore: %s | List: %s",
@@ -1722,80 +1627,76 @@ if Config.Targets.SmartScan then
         summary["Enemies"] = #sData.Enemies
         summary["Remotes"] = #sData.Remotes
         summary["Hitboxes"] = #sData.Hitboxes
-        summary["AntiCheat"] = #sData.AntiCheatSuspects
         summary["Unreliable"] = #sData.UnreliableRemotes
         _G.__BoomxicoSmartData = sData
     else summary["SmartScan"] = "ERR" end
 end
 
 if Config.Targets.BlockServiceScan then
-    Utils.log("═══ WAVE 3: Services ═══")
     local ok, svcData = pcall(collectImportantServices)
     if ok then
         serializer:save("24_important_services", svcData)
         summary["Services"] = "OK"
-    else summary["Services"] = "ERR" end
+    end
 end
 
 if Config.Targets.CharacterRemotes then
-    Utils.log("═══ WAVE 3: Character Remotes ═══")
     local ok, cr = pcall(collectCharacterRemotes)
     if ok then
         serializer:save("25_character_remotes", cr)
         local count = 0
         for _ in pairs(cr) do count = count + 1 end
         summary["CharRemotes"] = count
-    else summary["CharRemotes"] = "ERR" end
+    end
 end
 
 if Config.Targets.UnreliableScan then
-    Utils.log("═══ WAVE 3: Unreliable Scan ═══")
     local ok, ur = pcall(collectUnreliableRemotes)
     if ok then
         serializer:save("26_unreliable_remotes", ur)
         summary["UnreliableTotal"] = ur.Total
-    else summary["UnreliableTotal"] = "ERR" end
+    end
 end
 
 Utils.waitBetweenWaves()
 
 -- ╔═══ WAVE 4 ═══╗
--- ★★★ V3.6: เริ่ม Hook + Hitbox พร้อมกัน ★★★
-Utils.log("═══ WAVE 4: Live Capture (Parallel) ═══")
+Utils.log("═══ WAVE 4: Live Capture (V3.7 Fixed) ═══")
 
+-- ★★★ Run Hook + Hitbox (parallel) ★★★
 local hookThread = nil
 local hitboxThread = nil
 
 if Config.Targets.TargetedHook then
     hookThread = task.spawn(function()
-        local ok = pcall(function() TargetedHook:start() end)
-        if ok then
+        pcall(function() TargetedHook:start() end)
+        pcall(function()
             serializer:save("27_targeted_hook_server", TargetedHook.Log)
             serializer:save("28_targeted_hook_client", TargetedHook.ClientLog)
-            summary["HookServer"] = #TargetedHook.Log
-            summary["HookClient"] = #TargetedHook.ClientLog
-        else summary["HookServer"] = "ERR" end
+        end)
+        summary["HookServer"] = #TargetedHook.Log
+        summary["HookClient"] = #TargetedHook.ClientLog
 
-        -- ★★★ V3.6: UNHOOK หลังเสร็จ ★★★
+        -- ★★★ UNHOOK หลังเสร็จ ★★★
         pcall(function() TargetedHook:stop() end)
     end)
 end
 
 if Config.Targets.HitboxWatcher then
     hitboxThread = task.spawn(function()
-        local ok = pcall(function() HitboxWatcher:start() end)
-        if ok then
+        pcall(function() HitboxWatcher:start() end)
+        pcall(function()
             serializer:save("29_hitbox_realtime", HitboxWatcher.Events)
-            summary["HitboxEvents"] = #HitboxWatcher.Events
-        else summary["HitboxEvents"] = "ERR" end
-
+        end)
+        summary["HitboxEvents"] = #HitboxWatcher.Events
         pcall(function() HitboxWatcher:stop() end)
     end)
 end
 
--- รอ threads ทั้งคู่
-if hookThread then pcall(task.wait, 0) end
-while (TargetedHook.Running or HitboxWatcher.Running) and scriptAlive do
+-- รอ thread ทั้งคู่ (loop + destroy check)
+while (TargetedHook.Running or HitboxWatcher.Running) 
+      and scriptAlive 
+do
     task.wait(1)
 end
 
@@ -1813,7 +1714,6 @@ if Config.Targets.Analysis and _G.__BoomxicoSmartData then
     end)
     if ok then
         for _, h in ipairs(report.Hints) do Utils.hint(h) end
-        for _, r in ipairs(report.Risks) do Utils.warn(r) end
         serializer:save("30_analysis_report", report)
         summary["Analysis"] = "OK"
     end
@@ -1821,16 +1721,18 @@ end
 
 serializer:saveIndex()
 
--- Final cleanup
+-- Cleanup
 _G.__BoomxicoSmartData = nil
 scriptAlive = false
 
+-- ═══════════════════════════════════════════
 -- สรุป
+-- ═══════════════════════════════════════════
 local elapsed = tick() - startTime
 summary["Total Time (s)"] = string.format("%.2f", elapsed)
 summary["Total Objects"] = extractor.count
 
-Utils.printSummary(summary, "Dump V3.6 Complete")
+Utils.printSummary(summary, "Dump V3.7 Complete")
 
 Utils.log("═══════════════════════════════════════")
 Utils.log("📂 Session: " .. Config.OutputFolder)
