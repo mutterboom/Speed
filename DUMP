@@ -1,128 +1,1431 @@
--- ============================================
--- Simple SaveInstance (Educational Only)
--- For: Delta Executor PC (ต้องใช้ writefile)
--- ============================================
-local HttpService = game:GetService("HttpService")
+-- ╔═══════════════════════════════════════════════════════════════╗
+-- ║  Dump Framework V3.0 | FULL STEALTH EDITION                   ║
+-- ║  By Boomxico | Delta Executor                                 ║
+-- ║  Auto-Scale | Stealth | SmartScan | Analyzer | Sniffer        ║
+-- ╚═══════════════════════════════════════════════════════════════╝
 
--- ★ เริ่มจับเวลา
-local startTime = tick()
-print("[Dump] เริ่ม dump...")
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 1: CONFIG                        ║
+-- ╚═══════════════════════════════════════════╝
+local Config = {
+    Version = "3.0.0",
+    Author  = "Boomxico",
+    OutputFolder = "BoomxicoDumps",
 
--- ★ โครงสร้างเก็บข้อมูล
-local data = {
-    Info = {
-        GameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name,
-        PlaceId = game.PlaceId,
-        JobId = game.JobId,
-        DumpTime = os.date("%Y-%m-%d %H:%M:%S")
+    Targets = {
+        Info              = true,
+        Players           = true,
+        PlayersCharacter  = true,
+        Workspace         = true,
+        WorkspaceGrouped  = true,
+        ReplicatedStorage = true,
+        Lighting          = true,
+        SoundService      = true,
+        StarterGui        = true,
+        TerrainInfo       = true,
+        SmartScan         = true,
+        Analysis          = true,
+        RemoteSniffer     = true,
+        HitboxTracker     = true,
     },
-    Workspace = {},
-    ReplicatedStorage = {},
-    Lighting = {},
-    Players = {}
+
+    Limits = {
+        MaxDepth     = 8,
+        MaxObjects   = 200000,
+        MaxStringLen = 300,
+        MaxGuiDepth  = 5,
+        SnifferMaxLog = 1000,
+        HitboxMaxLog  = 500,
+    },
+
+    Filter = {
+        OnlyBaseParts    = false,
+        OnlyScripts      = false,
+        OnlyModels       = false,
+        OnlyNameMatch    = {},
+        IgnoreInvisible  = false,
+        IgnoreUnanchored = false,
+        MinSize          = 0,
+        IgnoreClasses    = {},
+    },
+
+    Options = {
+        SplitFiles      = true,
+        StoreFullPath   = true,
+        StoreCFrame     = true,
+        StoreSource     = false,
+        StoreAttributes = true,
+        StoreTags       = true,
+    },
+
+    -- ★★★ STEALTH MODULE ★★★
+    Stealth = {
+        Enabled           = true,
+        WrapAPIs          = true,
+        RandomizeDelay    = true,
+        DelayMin          = 0.02,
+        DelayMax          = 0.08,
+        HideFromPlayerGui = true,
+        RandomizeNames    = true,
+        SuppressErrors    = false,
+        DetectHooks       = true,
+        SafeFallback      = true,
+        ChunkSize         = 200,
+        ChunkDelay        = 0.01,
+        SpoofCaller       = false,
+        RandomStartDelay  = true,
+    },
+
+    SmartDump = {
+        CollectiblePatterns = {
+            "Coin","Gem","Chest","Item","Drop","Pickup","Orb","Shard",
+            "Token","Reward","Loot","Seed","Fruit","Crystal","Scroll",
+            "Key","Star","Box","Bag","Egg","Potion",
+        },
+        EnemyPatterns = {
+            "Enemy","Boss","Mob","NPC","Monster","Dummy","Target",
+            "Guard","Minion","Zombie","Soldier","Bandit","Goblin",
+            "Slime","Titan","Wyvern",
+        },
+        PortalPatterns = {
+            "Portal","Door","Gate","Entrance","Teleport","Exit","Warp",
+        },
+        RemotePatterns = {
+            "Attack","Parry","Block","Hit","Damage","Combat","Use",
+            "Skill","Ability","Cast","Punch","Slash","Farm","Collect",
+            "Claim","Equip","Buy","Sell","Trade",
+        },
+        HitboxPatterns = {
+            "Hitbox","Trigger","Zone","Region","Detection","Hit","Damage","Touch",
+        },
+        SpawnPatterns = {
+            "Spawn","SpawnPoint","SpawnLocation","Spawner",
+        },
+        AntiCheatSigns = {
+            "AntiCheat","AC_","_AC","Guard","Watchdog","Kick","Ban",
+            "Detect","Secure","Protect",
+        },
+    },
 }
 
--- ★ ฟังก์ชันแปลง Properties ของ Object
-local function getProperties(obj)
-    local props = {}
-    local success, err = pcall(function()
-        -- เก็บ Properties พื้นฐาน
-        if obj:IsA("BasePart") then
-            props.ClassName = obj.ClassName
-            props.Name = obj.Name
-            props.Position = tostring(obj.Position)
-            props.Size = tostring(obj.Size)
-            props.Rotation = tostring(obj.Rotation)
-            props.Color = tostring(obj.Color)
-            props.Material = tostring(obj.Material)
-            props.Transparency = obj.Transparency
-            props.CanCollide = obj.CanCollide
-            props.Anchored = obj.Anchored
-        elseif obj:IsA("Model") then
-            props.ClassName = "Model"
-            props.Name = obj.Name
-            props.PrimaryPart = obj.PrimaryPart and obj.PrimaryPart.Name or "nil"
-        elseif obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
-            props.ClassName = obj.ClassName
-            props.Name = obj.Name
-            props.Source = "[Script Content Not Accessible]"
-        elseif obj:IsA("Folder") then
-            props.ClassName = "Folder"
-            props.Name = obj.Name
-        elseif obj:IsA("StringValue") or obj:IsA("NumberValue") or obj:IsA("BoolValue") then
-            props.ClassName = obj.ClassName
-            props.Name = obj.Name
-            props.Value = tostring(obj.Value)
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 2: SERVICES                      ║
+-- ╚═══════════════════════════════════════════╝
+local Players            = game:GetService("Players")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local Lighting           = game:GetService("Lighting")
+local SoundService       = game:GetService("SoundService")
+local StarterGui         = game:GetService("StarterGui")
+local HttpService        = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local CollectionService  = game:GetService("CollectionService")
+local CoreGui            = game:GetService("CoreGui")
+local RunService         = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local scriptAlive = true
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 3: UTILS                         ║
+-- ╚═══════════════════════════════════════════╝
+local Utils = {}
+
+function Utils.safe(fn, ...)
+    local ok, r = pcall(fn, ...)
+    if ok then return r, nil end
+    return nil, tostring(r)
+end
+
+function Utils.truncate(s, maxLen)
+    s = tostring(s)
+    if #s <= maxLen then return s end
+    return string.sub(s, 1, maxLen) .. "..."
+end
+
+function Utils.formatColor(c)
+    return string.format("%.3f,%.3f,%.3f", c.R, c.G, c.B)
+end
+
+function Utils.formatVector(v)
+    return string.format("%.3f,%.3f,%.3f", v.X, v.Y, v.Z)
+end
+
+function Utils.formatPosition(p)
+    return { X = p.X, Y = p.Y, Z = p.Z }
+end
+
+function Utils.formatCFrame(cf)
+    local p = cf.Position
+    local lv = cf.LookVector
+    return string.format("P(%.2f,%.2f,%.2f) L(%.2f,%.2f,%.2f)",
+        p.X, p.Y, p.Z, lv.X, lv.Y, lv.Z)
+end
+
+function Utils.makeTimestamp()
+    local t = os.date("*t")
+    return string.format("%04d%02d%02d_%02d%02d%02d",
+        t.year, t.month, t.day, t.hour, t.min, t.sec)
+end
+
+local LP = "[DumpV3]"
+function Utils.log(m)  print(LP .. " " .. tostring(m)) end
+function Utils.ok(m)   print(LP .. " ✅ " .. tostring(m)) end
+function Utils.warn(m) warn(LP .. " ⚠️ " .. tostring(m)) end
+function Utils.hint(m) print(LP .. " 💡 " .. tostring(m)) end
+
+function Utils.matchPattern(name, patterns)
+    if not name then return false, nil end
+    local lower = string.lower(name)
+    for _, p in ipairs(patterns) do
+        if string.find(lower, string.lower(p), 1, true) then
+            return true, p
         end
-    end)
-    if not success then
-        props.Error = "Cannot read: " .. tostring(err)
     end
+    return false, nil
+end
+
+function Utils.getAttributes(obj)
+    local attrs = {}
+    if not Config.Options.StoreAttributes then return attrs end
+    local ok, list = pcall(function() return obj:GetAttributes() end)
+    if not ok or not list then return attrs end
+    for _, name in ipairs(list) do
+        local val = Utils.safe(function() return obj:GetAttribute(name) end)
+        if val ~= nil then attrs[name] = tostring(val) end
+    end
+    return attrs
+end
+
+function Utils.getTags(obj)
+    if not Config.Options.StoreTags then return nil end
+    local ok, tags = pcall(function() return CollectionService:GetTags(obj) end)
+    if ok and tags and #tags > 0 then return tags end
+    return nil
+end
+
+function Utils.printSummary(tbl, title)
+    title = title or "Summary"
+    local keys = {}
+    for k in pairs(tbl) do table.insert(keys, k) end
+    table.sort(keys)
+    print("╔══════════════════════════════════════╗")
+    print("║  " .. title)
+    print("╠══════════════════════════════════════╣")
+    for _, k in ipairs(keys) do
+        print(string.format("║  %-26s : %-10s ║", k, tostring(tbl[k])))
+    end
+    print("╚══════════════════════════════════════╝")
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 4: STEALTH MODULE                ║
+-- ╚═══════════════════════════════════════════╝
+local Stealth = {}
+Stealth.Originals = {}
+Stealth.Threats = {}
+
+-- ─── Detect capabilities ───
+function Stealth.detect()
+    return {
+        newcclosure      = type(newcclosure) == "function",
+        hookfunction     = type(hookfunction) == "function",
+        getrawmetatable  = type(getrawmetatable) == "function",
+        setreadonly      = type(setreadonly) == "function",
+        isreadonly       = type(isreadonly) == "function",
+        getcallingscript = type(getcallingscript) == "function",
+        getgenv          = type(getgenv) == "function",
+        checkcaller      = type(checkcaller) == "function",
+        gethui           = type(gethui) == "function",
+        getscripts       = type(getscripts) == "function",
+        getconstants     = type(getconstants) == "function",
+        getscriptbytecode= type(getscriptbytecode) == "function",
+        getupvalues      = type(getupvalues) == "function",
+        decompile        = type(decompile) == "function",
+        debug_getconstants = debug and type(debug.getconstants) == "function",
+        debug_getinfo    = debug and type(debug.getinfo) == "function",
+        writefile        = type(writefile) == "function",
+        isfolder         = type(isfolder) == "function",
+        makefolder       = type(makefolder) == "function",
+        identifyexecutor = type(identifyexecutor) == "function",
+    }
+end
+
+local caps = Stealth.detect()
+
+-- ─── Wrap ───
+function Stealth.wrap(fn)
+    if not caps.newcclosure then return fn end
+    local ok, wrapped = pcall(newcclosure, fn)
+    if ok and wrapped then return wrapped end
+    return fn
+end
+
+-- ─── Safe call ───
+function Stealth.safeCall(name, fn, ...)
+    if not Stealth.Originals[name] then
+        Stealth.Originals[name] = fn
+    end
+    local target = Stealth.Originals[name]
+    local wrapped = Stealth.wrap(target)
+    local ok, r = pcall(wrapped, ...)
+    if not ok then
+        if not Config.Stealth.SuppressErrors then
+            Utils.warn("[Stealth] " .. name .. " err: " .. tostring(r))
+        end
+        return nil
+    end
+    return r
+end
+
+-- ─── Quiet (silent) ───
+function Stealth.quiet(fn, ...)
+    local ok, r = pcall(fn, ...)
+    if not ok then return nil end
+    return r
+end
+
+-- ─── Delay ───
+function Stealth.delay(base)
+    if not Config.Stealth.RandomizeDelay then
+        task.wait(base or 0); return
+    end
+    local jitter = Config.Stealth.DelayMin
+        + math.random() * (Config.Stealth.DelayMax - Config.Stealth.DelayMin)
+    task.wait((base or 0) + jitter)
+end
+
+-- ─── Random name ───
+function Stealth.randomName(prefix)
+    prefix = prefix or "X"
+    local chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    local len = 8 + math.random(0, 6)
+    local out = {}
+    for _ = 1, len do
+        local i = math.random(1, #chars)
+        table.insert(out, chars:sub(i, i))
+    end
+    return prefix .. "_" .. table.concat(out)
+end
+
+-- ─── Safe GUI parenting ───
+function Stealth.parentGui(gui)
+    if not Config.Stealth.HideFromPlayerGui then
+        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        return
+    end
+
+    -- ลอง gethui ก่อน
+    if caps.gethui then
+        local ok, hui = pcall(gethui)
+        if ok and hui then
+            local parented = pcall(function() gui.Parent = hui end)
+            if parented then return end
+        end
+    end
+
+    -- ลอง CoreGui
+    local ok = pcall(function() gui.Parent = CoreGui end)
+    if ok then return end
+
+    -- สุดท้าย PlayerGui + random name
+    if Config.Stealth.RandomizeNames then
+        gui.Name = Stealth.randomName("Svc")
+    end
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- ─── Hook detection ───
+function Stealth.detectHooks()
+    local threats = {}
+    if not Config.Stealth.DetectHooks then return threats end
+    if not caps.getrawmetatable then return threats end
+
+    -- เช็ค game metatable
+    local ok, mt = pcall(getrawmetatable, game)
+    if ok and mt and mt.__namecall then
+        local isNative = false
+        pcall(function()
+            if caps.debug_getinfo then
+                local info = debug.getinfo(mt.__namecall)
+                if info and info.source == "=[C]" then isNative = true end
+            end
+        end)
+        if not isNative then
+            table.insert(threats, "game.__namecall (ไม่ใช่ native)")
+        end
+    end
+
+    -- เช็คฟังก์ชันสำคัญ
+    local apis = {
+        "getscripts","getconstants","decompile","warn","print",
+        "getscriptbytecode","getupvalues",
+    }
+    for _, name in ipairs(apis) do
+        local fn = rawget(getfenv and getfenv() or _G, name)
+            or rawget(_G, name)
+        if type(fn) == "function" and caps.debug_getinfo then
+            local info = Stealth.quiet(debug.getinfo, fn)
+            if info and info.source and info.source ~= "=[C]" then
+                table.insert(threats,
+                    name .. " ถูก wrap: " .. tostring(info.source))
+            end
+        end
+    end
+
+    Stealth.Threats = threats
+    return threats
+end
+
+-- ─── Caller spoof wrapper ───
+function Stealth.spoofCaller(fn)
+    if not Config.Stealth.SpoofCaller then return fn end
+    if not caps.newcclosure then return fn end
+    return Stealth.wrap(function(...)
+        if type(setthreadidentity) == "function" then
+            pcall(setthreadidentity, 2)
+        end
+        local r = fn(...)
+        if type(setthreadidentity) == "function" then
+            pcall(setthreadidentity, 8)
+        end
+        return r
+    end)
+end
+
+-- ─── Stealth init ───
+function Stealth.init()
+    if not Config.Stealth.Enabled then
+        Utils.log("Stealth: ปิด (ใช้โหมดปกติ)")
+        return
+    end
+    Utils.log("🛡️ เริ่มระบบ Stealth...")
+
+    -- โหลด original APIs
+    for _, name in ipairs({
+        "getscripts","getconstants","getscriptbytecode",
+        "getupvalues","decompile","warn","print",
+    }) do
+        local fn = rawget(getfenv and getfenv() or _G, name)
+            or rawget(_G, name)
+        if type(fn) == "function" then
+            Stealth.Originals[name] = fn
+        end
+    end
+
+    -- ตรวจ hook
+    local threats = Stealth.detectHooks()
+    if #threats > 0 then
+        Utils.warn("ตรวจพบ hook " .. #threats .. " จุด:")
+        for _, t in ipairs(threats) do
+            Utils.warn("  • " .. t)
+        end
+    else
+        Utils.ok("ไม่พบ hook ที่น่าสงสัย")
+    end
+
+    -- หน่วงเริ่มต้น
+    if Config.Stealth.RandomStartDelay then
+        local d = 0.3 + math.random() * 0.7
+        Utils.log(string.format("รอเริ่ม %.2f วิ...", d))
+        task.wait(d)
+    end
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 5: FILTER                        ║
+-- ╚═══════════════════════════════════════════╝
+local Filter = {}
+Filter.__index = Filter
+
+function Filter.new(cfg)
+    local self = setmetatable({}, Filter)
+    self.cfg = cfg
+    return self
+end
+
+function Filter:shouldKeep(obj)
+    local cfg = self.cfg
+    if cfg.OnlyBaseParts and not obj:IsA("BasePart") then return false end
+    if cfg.OnlyScripts and not obj:IsA("LuaSourceContainer") then return false end
+    if cfg.OnlyModels and not obj:IsA("Model") then return false end
+
+    for _, cls in ipairs(cfg.IgnoreClasses or {}) do
+        if obj:IsA(cls) then return false end
+    end
+
+    if #(cfg.OnlyNameMatch or {}) > 0 then
+        local found = false
+        for _, n in ipairs(cfg.OnlyNameMatch) do
+            if obj.Name == n then found = true break end
+        end
+        if not found then return false end
+    end
+
+    if obj:IsA("BasePart") then
+        if cfg.IgnoreInvisible and obj.Transparency >= 1 then return false end
+        if cfg.IgnoreUnanchored and not obj.Anchored then return false end
+        if cfg.MinSize > 0 then
+            local s = obj.Size
+            if s.X < cfg.MinSize and s.Y < cfg.MinSize and s.Z < cfg.MinSize then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 6: EXTRACTOR                     ║
+-- ╚═══════════════════════════════════════════╝
+local Extractor = {}
+Extractor.__index = Extractor
+
+function Extractor.new(config)
+    local self = setmetatable({}, Extractor)
+    self.cfg = config
+    self.filter = Filter.new(config.Filter)
+    self.count = 0
+    return self
+end
+
+function Extractor:getProperties(obj)
+    local cfg = self.cfg
+    local props = { ClassName = obj.ClassName, Name = obj.Name }
+
+    if cfg.Options.StoreFullPath then
+        if Config.Stealth.Enabled then
+            props._path = Stealth.quiet(function() return obj:GetFullName() end) or "?"
+        else
+            props._path = Utils.safe(function() return obj:GetFullName() end) or "?"
+        end
+    end
+
+    local attrs = Utils.getAttributes(obj)
+    if next(attrs) then props._attributes = attrs end
+    local tags = Utils.getTags(obj)
+    if tags then props._tags = tags end
+
+    if obj:IsA("BasePart") then
+        props.Position = Utils.formatVector(obj.Position)
+        props.PositionRaw = Utils.formatPosition(obj.Position)
+        props.Size = Utils.formatVector(obj.Size)
+        props.Orientation = Utils.formatVector(obj.Orientation)
+        if cfg.Options.StoreCFrame then
+            props.CFrame = Utils.formatCFrame(obj.CFrame)
+        end
+        props.Color = Utils.formatColor(obj.Color)
+        props.Material = tostring(obj.Material)
+        props.Transparency = obj.Transparency
+        props.Reflectance = obj.Reflectance
+        props.CanCollide = obj.CanCollide
+        props.CanTouch = obj.CanTouch
+        props.CanQuery = obj.CanQuery
+        props.Anchored = obj.Anchored
+        props.Massless = obj.Massless
+
+        if obj:IsA("MeshPart") then
+            props.MeshId = obj.MeshId
+            props.TextureID = obj.TextureID
+        end
+        if obj:IsA("SpawnLocation") then
+            props.Enabled = obj.Enabled
+            props.TeamColor = Utils.formatColor(obj.TeamColor)
+            props.Neutral = obj.Neutral
+        end
+    end
+
+    if obj:IsA("Model") then
+        props.PrimaryPart = obj.PrimaryPart and obj.PrimaryPart.Name or nil
+        props.ChildCount = #obj:GetChildren()
+    end
+
+    if obj:IsA("LuaSourceContainer") then
+        props.Source = "[Not Accessible]"
+        if cfg.Options.StoreSource and Config.Stealth.Enabled then
+            local src = Stealth.quiet(function() return obj.Source end)
+            if src and #src > 0 then
+                props.SourcePreview = Utils.truncate(src, cfg.Limits.MaxStringLen)
+            end
+        end
+    end
+
+    if obj:IsA("RemoteEvent") then props.RemoteType = "Event" end
+    if obj:IsA("RemoteFunction") then props.RemoteType = "Function" end
+    if obj:IsA("BindableEvent") then props.RemoteType = "Bindable" end
+
+    if obj:IsA("ValueBase") then
+        props.Value = tostring(obj.Value)
+        props.ValueType = obj.ClassName
+    end
+
+    if obj:IsA("GuiObject") then
+        props.Visible = obj.Visible
+        props.GuiSize = tostring(obj.Size)
+        props.GuiPosition = tostring(obj.Position)
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+            props.Text = Utils.truncate(obj.Text, 100)
+            props.TextSize = obj.TextSize
+        end
+        if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+            props.Image = obj.Image
+        end
+    end
+
+    if obj:IsA("Decal") or obj:IsA("Texture") then
+        props.Texture = obj.Texture
+    end
+    if obj:IsA("Sound") then
+        props.SoundId = obj.SoundId
+        props.Volume = obj.Volume
+        props.Looped = obj.Looped
+        props.Playing = obj.Playing
+    end
+    if obj:IsA("ParticleEmitter") then
+        props.Enabled = obj.Enabled
+        props.Rate = obj.Rate
+    end
+    if obj:IsA("Beam") then
+        props.Enabled = obj.Enabled
+        props.Width0 = obj.Width0
+    end
+    if obj:IsA("Trail") then props.Enabled = obj.Enabled end
+    if obj:IsA("ProximityPrompt") then
+        props.ActionText = obj.ActionText
+        props.ObjectText = obj.ObjectText
+        props.HoldDuration = obj.HoldDuration
+        props.Enabled = obj.Enabled
+    end
+    if obj:IsA("ClickDetector") then
+        props.MaxActivationDistance = obj.MaxActivationDistance
+    end
+
     return props
 end
 
--- ★ ฟังก์ชัน dump ทั่วไป
-local function dumpContainer(container)
+function Extractor:dumpContainer(container)
+    local cfg = self.cfg
     local result = {}
-    local count = 0
-    for _, obj in ipairs(container:GetDescendants()) do
-        local props = getProperties(obj)
-        if next(props) then
+    local processed = 0
+
+    local function recurse(obj, depth)
+        if depth > cfg.Limits.MaxDepth then return end
+        if self.count >= cfg.Limits.MaxObjects then return end
+
+        local props = self:getProperties(obj)
+        if self.filter:shouldKeep(obj) then
+            props._depth = depth
             table.insert(result, props)
-            count = count + 1
+            self.count = self.count + 1
+        end
+
+        processed = processed + 1
+        if Config.Stealth.Enabled
+           and processed % Config.Stealth.ChunkSize == 0 then
+            Stealth.delay(Config.Stealth.ChunkDelay)
+        end
+
+        for _, child in ipairs(obj:GetChildren()) do
+            recurse(child, depth + 1)
         end
     end
-    return result, count
+
+    for _, child in ipairs(container:GetChildren()) do
+        recurse(child, 1)
+    end
+    return result, self.count
 end
 
--- ★ Dump Workspace
-print("[Dump] กำลัง dump Workspace...")
-local wsData, wsCount = dumpContainer(game.Workspace)
-data.Workspace = wsData
-print("[Dump] Workspace: " .. wsCount .. " objects")
+function Extractor:buildTree(container, maxDepth)
+    maxDepth = maxDepth or 4
+    local function node(obj, depth)
+        if depth > maxDepth then return nil end
+        local entry = { Name = obj.Name, Class = obj.ClassName }
+        local children = {}
+        for _, c in ipairs(obj:GetChildren()) do
+            local n = node(c, depth + 1)
+            if n then table.insert(children, n) end
+        end
+        if #children > 0 then entry.Children = children end
+        return entry
+    end
+    local root = {
+        Name = container.Name or "Root",
+        Class = container.ClassName or "Container",
+    }
+    local children = {}
+    for _, c in ipairs(container:GetChildren()) do
+        local n = node(c, 1)
+        if n then table.insert(children, n) end
+    end
+    root.Children = children
+    return root
+end
 
--- ★ Dump ReplicatedStorage
-print("[Dump] กำลัง dump ReplicatedStorage...")
-local rsData, rsCount = dumpContainer(game:GetService("ReplicatedStorage"))
-data.ReplicatedStorage = rsData
-print("[Dump] ReplicatedStorage: " .. rsCount .. " objects")
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 7: SERIALIZER                    ║
+-- ╚═══════════════════════════════════════════╝
+local Serializer = {}
+Serializer.__index = Serializer
 
--- ★ Dump Lighting
-print("[Dump] กำลัง dump Lighting...")
-local liData, liCount = dumpContainer(game:GetService("Lighting"))
-data.Lighting = liData
-print("[Dump] Lighting: " .. liCount .. " objects")
+function Serializer.new(config)
+    local self = setmetatable({}, Serializer)
+    self.cfg = config
+    self.index = {}
+    return self
+end
 
--- ★ Dump Players (ชื่อเท่านั้น)
-print("[Dump] กำลัง dump Players...")
-for _, plr in ipairs(game:GetService("Players"):GetPlayers()) do
-    table.insert(data.Players, {
-        Name = plr.Name,
-        DisplayName = plr.DisplayName,
-        UserId = plr.UserId
+function Serializer:encode(tbl)
+    local json = Utils.safe(function()
+        return HttpService:JSONEncode(tbl)
+    end)
+    if not json then
+        Utils.warn("JSON encode failed")
+        return nil
+    end
+    return json
+end
+
+function Serializer:save(name, tbl)
+    local cfg = self.cfg
+    local json = self:encode(tbl)
+    if not json then return false end
+
+    Utils.safe(function()
+        if caps.isfolder and not isfolder(cfg.OutputFolder) then
+            makefolder(cfg.OutputFolder)
+        end
+    end)
+
+    local ts = Utils.makeTimestamp()
+    local fileName = string.format("%s/%s_%s_%s.json",
+        cfg.OutputFolder, name, tostring(game.PlaceId), ts)
+
+    local ok, err = Utils.safe(writefile, fileName, json)
+    if ok then
+        local kb = math.floor(#json / 1024)
+        Utils.ok(string.format("%-26s → %d KB", name, kb))
+        table.insert(self.index, {
+            name = name, file = fileName, size_kb = kb,
+            count = type(tbl) == "table" and #tbl or 0,
+        })
+        Stealth.delay(0)
+        return true
+    else
+        Utils.warn("writefile " .. name .. ": " .. tostring(err))
+        return false
+    end
+end
+
+function Serializer:saveIndex()
+    local cfg = self.cfg
+    local ts = Utils.makeTimestamp()
+    local file = string.format("%s/_INDEX_%s_%s.json",
+        cfg.OutputFolder, tostring(game.PlaceId), ts)
+    local json = self:encode({
+        Version = Config.Version,
+        GeneratedAt = os.date("%Y-%m-%d %H:%M:%S"),
+        PlaceId = game.PlaceId,
+        JobId = game.JobId,
+        Stealth = Config.Stealth.Enabled,
+        Files = self.index,
+    })
+    if json then
+        Utils.safe(writefile, file, json)
+        Utils.ok("Index: " .. file)
+    end
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 8: COLLECTORS                    ║
+-- ╚═══════════════════════════════════════════╝
+
+local function collectInfo()
+    local name = Utils.safe(function()
+        return MarketplaceService:GetProductInfo(game.PlaceId).Name
+    end) or "Unknown"
+    return {
+        GameName = name,
+        PlaceId = game.PlaceId,
+        JobId = game.JobId,
+        DumpTime = os.date("%Y-%m-%d %H:%M:%S"),
+        ScriptVersion = Config.Version,
+        Executor = (caps.identifyexecutor and identifyexecutor()) or "Unknown",
+        PlayerCount = #Players:GetPlayers(),
+        MaxPlayers = Players.MaxPlayers,
+        IsStudio = RunService:IsStudio(),
+        StealthEnabled = Config.Stealth.Enabled,
+    }
+end
+
+local function collectPlayers()
+    local result = {}
+    local myChar = LocalPlayer.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    for _, plr in ipairs(Players:GetPlayers()) do
+        local entry = {
+            Name = plr.Name,
+            DisplayName = plr.DisplayName,
+            UserId = plr.UserId,
+            AccountAge = plr.AccountAge,
+            Team = plr.Team and plr.Team.Name or nil,
+            TeamColor = plr.TeamColor and Utils.formatColor(plr.TeamColor) or nil,
+        }
+        local char = plr.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            entry.HasCharacter = true
+            if hrp then
+                entry.Position = Utils.formatVector(hrp.Position)
+                entry.PositionRaw = Utils.formatPosition(hrp.Position)
+                if myHRP and plr ~= LocalPlayer then
+                    entry.DistanceFromMe = math.floor(
+                        (hrp.Position - myHRP.Position).Magnitude)
+                end
+            end
+            if hum then
+                entry.Health = hum.Health
+                entry.MaxHealth = hum.MaxHealth
+                entry.WalkSpeed = hum.WalkSpeed
+                entry.JumpPower = hum.JumpPower
+                entry.State = tostring(hum:GetState())
+                entry.RigType = tostring(hum.RigType)
+            end
+        else
+            entry.HasCharacter = false
+        end
+        table.insert(result, entry)
+    end
+    return result
+end
+
+local function collectPlayerCharDetail()
+    local result = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        local char = plr.Character
+        if char then
+            local d = {
+                Name = plr.Name,
+                Parts = {}, Accessories = {}, Tools = {},
+                Animations = {}, HumanoidInfo = {},
+            }
+            for _, obj in ipairs(char:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    table.insert(d.Parts, {
+                        Name = obj.Name, Class = obj.ClassName,
+                        Position = Utils.formatVector(obj.Position),
+                        Size = Utils.formatVector(obj.Size),
+                        Transparency = obj.Transparency,
+                    })
+                elseif obj:IsA("Accessory") then
+                    local h = obj:FindFirstChild("Handle")
+                    table.insert(d.Accessories, {
+                        Name = obj.Name,
+                        Type = obj.AccessoryType and tostring(obj.AccessoryType) or "?",
+                        HandleName = h and h.Name or nil,
+                    })
+                elseif obj:IsA("Tool") then
+                    table.insert(d.Tools, { Name = obj.Name })
+                elseif obj:IsA("Animation") then
+                    table.insert(d.Animations, {
+                        Name = obj.Name, AnimationId = obj.AnimationId,
+                    })
+                end
+            end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                d.HumanoidInfo = {
+                    Health = hum.Health, MaxHealth = hum.MaxHealth,
+                    WalkSpeed = hum.WalkSpeed, JumpPower = hum.JumpPower,
+                    RigType = tostring(hum.RigType),
+                }
+            end
+            result[plr.Name] = d
+        end
+    end
+    return result
+end
+
+local function collectSounds()
+    local result = {}
+    local seen = {}
+    local function scan(parent, source)
+        for _, s in ipairs(parent:GetDescendants()) do
+            if s:IsA("Sound") and not seen[s] then
+                seen[s] = true
+                table.insert(result, {
+                    Name = s.Name, Class = s.ClassName,
+                    SoundId = s.SoundId, Volume = s.Volume,
+                    Looped = s.Looped, Playing = s.Playing,
+                    Path = Stealth.quiet(function() return s:GetFullName() end),
+                    Source = source,
+                })
+            end
+        end
+    end
+    scan(SoundService, "SoundService")
+    scan(workspace, "Workspace")
+    scan(Lighting, "Lighting")
+    return result
+end
+
+local function collectTerrainInfo()
+    local terrain = workspace:FindFirstChildOfClass("Terrain")
+    if not terrain then return { Exists = false } end
+    return {
+        Exists = true,
+        WaterWaveSize = terrain.WaterWaveSize,
+        WaterWaveSpeed = terrain.WaterWaveSpeed,
+        WaterTransparency = terrain.WaterTransparency,
+        WaterColor = Utils.formatColor(terrain.WaterColor),
+        Decoration = terrain.Decoration,
+    }
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 9: SMART SCAN                    ║
+-- ╚═══════════════════════════════════════════╝
+local SmartScan = {}
+
+function SmartScan.scan()
+    local cfg = Config.SmartDump
+    local found = {
+        Collectibles = {}, Enemies = {}, Portals = {},
+        Remotes = {}, Hitboxes = {}, Spawns = {},
+        AntiCheatSuspects = {},
+    }
+
+    Utils.log("🔍 สแกน Workspace...")
+    local wsList = workspace:GetDescendants()
+    local processed = 0
+
+    for _, obj in ipairs(wsList) do
+        processed = processed + 1
+        if Config.Stealth.Enabled
+           and processed % Config.Stealth.ChunkSize == 0 then
+            Stealth.delay(Config.Stealth.ChunkDelay)
+        end
+
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            local pos = obj:IsA("BasePart")
+                and Utils.formatVector(obj.Position) or nil
+            local path = Stealth.quiet(function() return obj:GetFullName() end)
+
+            local ok, tag = Utils.matchPattern(obj.Name, cfg.CollectiblePatterns)
+            if ok then
+                table.insert(found.Collectibles, {
+                    Name = obj.Name, Class = obj.ClassName,
+                    Position = pos,
+                    PositionRaw = obj:IsA("BasePart")
+                        and Utils.formatPosition(obj.Position) or nil,
+                    Path = path, Tag = tag,
+                })
+            end
+
+            ok, tag = Utils.matchPattern(obj.Name, cfg.EnemyPatterns)
+            if ok then
+                table.insert(found.Enemies, {
+                    Name = obj.Name, Class = obj.ClassName,
+                    Position = pos,
+                    PositionRaw = obj:IsA("BasePart")
+                        and Utils.formatPosition(obj.Position) or nil,
+                    Path = path, Tag = tag,
+                })
+            end
+
+            ok, tag = Utils.matchPattern(obj.Name, cfg.PortalPatterns)
+            if ok then
+                table.insert(found.Portals, {
+                    Name = obj.Name, Class = obj.ClassName,
+                    Position = pos, Path = path, Tag = tag,
+                })
+            end
+
+            ok, tag = Utils.matchPattern(obj.Name, cfg.SpawnPatterns)
+            if ok then
+                table.insert(found.Spawns, {
+                    Name = obj.Name, Position = pos, Path = path, Tag = tag,
+                })
+            end
+
+            if obj:IsA("BasePart")
+               and obj.Transparency >= 1 and obj.CanTouch then
+                ok, tag = Utils.matchPattern(obj.Name, cfg.HitboxPatterns)
+                if ok then
+                    table.insert(found.Hitboxes, {
+                        Name = obj.Name, Position = pos,
+                        Size = Utils.formatVector(obj.Size),
+                        Path = path, Tag = tag,
+                    })
+                end
+            end
+
+            ok, tag = Utils.matchPattern(obj.Name, cfg.AntiCheatSigns)
+            if ok then
+                table.insert(found.AntiCheatSuspects, {
+                    Name = obj.Name, Class = obj.ClassName,
+                    Path = path, Sign = tag,
+                })
+            end
+        end
+    end
+
+    Utils.log("🔍 สแกน ReplicatedStorage...")
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")
+           or obj:IsA("BindableEvent") or obj:IsA("BindableFunction") then
+            local ok, tag = Utils.matchPattern(obj.Name, cfg.RemotePatterns)
+            table.insert(found.Remotes, {
+                Name = obj.Name, Class = obj.ClassName,
+                Path = Stealth.quiet(function() return obj:GetFullName() end),
+                Tag = tag or "none", Interested = ok,
+            })
+        end
+        local ok, tag = Utils.matchPattern(obj.Name, cfg.AntiCheatSigns)
+        if ok then
+            table.insert(found.AntiCheatSuspects, {
+                Name = obj.Name, Class = obj.ClassName,
+                Path = Stealth.quiet(function() return obj:GetFullName() end),
+                Sign = tag,
+            })
+        end
+    end
+
+    -- PlayerGui remotes
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        for _, obj in ipairs(pg:GetDescendants()) do
+            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                local ok, tag = Utils.matchPattern(obj.Name, cfg.RemotePatterns)
+                table.insert(found.Remotes, {
+                    Name = obj.Name, Class = obj.ClassName,
+                    Path = Stealth.quiet(function() return obj:GetFullName() end),
+                    Tag = tag or "none", Interested = ok,
+                    Location = "PlayerGui",
+                })
+            end
+        end
+    end
+
+    return found
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 10: REMOTE SNIFFER               ║
+-- ╚═══════════════════════════════════════════╝
+local Sniffer = {
+    Log = {},
+    Running = false,
+    Hooked = false,
+}
+
+function Sniffer.start()
+    if Sniffer.Hooked then return end
+    if not caps.getrawmetatable or not caps.setreadonly then
+        Utils.warn("Sniffer: ไม่มี getrawmetatable")
+        return
+    end
+
+    local mt = getrawmetatable(game)
+    if not mt then return end
+
+    local oldNamecall = mt.__namecall
+    Sniffer.Originals = oldNamecall
+
+    setreadonly(mt, false)
+    mt.__namecall = Stealth.wrap(function(self, ...)
+        local method = getnamecallmethod and getnamecallmethod()
+        if (method == "FireServer" or method == "InvokeServer")
+           and typeof(self) == "Instance"
+           and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
+            local args = {...}
+            local info = {}
+            for i, v in ipairs(args) do
+                local vt = typeof(v)
+                info[i] = {
+                    type = vt,
+                    value = vt == "Instance"
+                        and Stealth.quiet(function() return v:GetFullName() end)
+                        or Utils.truncate(tostring(v), 100),
+                }
+            end
+            table.insert(Sniffer.Log, {
+                Remote = Stealth.quiet(function() return self:GetFullName() end),
+                Method = method,
+                Args = info,
+                Time = os.date("%H:%M:%S"),
+                Tick = tick(),
+            })
+            if #Sniffer.Log > Config.Limits.SnifferMaxLog then
+                table.remove(Sniffer.Log, 1)
+            end
+        end
+        return oldNamecall(self, ...)
+    end)
+    setreadonly(mt, true)
+
+    Sniffer.Hooked = true
+    Sniffer.Running = true
+    Utils.ok("🎣 Remote Sniffer: เริ่มดักแล้ว")
+end
+
+function Sniffer.stop()
+    Sniffer.Running = false
+end
+
+function Sniffer.getSummary()
+    local summary = {}
+    for _, log in ipairs(Sniffer.Log) do
+        summary[log.Remote] = (summary[log.Remote] or 0) + 1
+    end
+    return summary
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 11: HITBOX TRACKER               ║
+-- ╚═══════════════════════════════════════════╝
+local HitboxTracker = {
+    Events = {},
+    Watching = {},
+    Running = false,
+}
+
+function HitboxTracker:watch(names)
+    for _, n in ipairs(names) do self.Watching[n] = true end
+end
+
+function HitboxTracker:start()
+    if self.Running then return end
+    self.Running = true
+
+    task.spawn(function()
+        while self.Running and scriptAlive do
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart")
+                   and self.Watching[obj.Name]
+                   and not obj:GetAttribute("_ht") then
+                    obj:SetAttribute("_ht", true)
+                    local spawn = tick()
+                    table.insert(self.Events, {
+                        Name = obj.Name,
+                        SpawnTime = spawn,
+                        Path = Stealth.quiet(function() return obj:GetFullName() end),
+                    })
+                    task.spawn(function()
+                        local conn
+                        conn = obj.AncestryChanged:Connect(function()
+                            if conn then conn:Disconnect() end
+                            for _, e in ipairs(self.Events) do
+                                if e.SpawnTime == spawn and not e.DespawnTime then
+                                    e.DespawnTime = tick()
+                                    e.Duration = e.DespawnTime - e.SpawnTime
+                                    break
+                                end
+                            end
+                        end)
+                    end)
+                    if #self.Events > Config.Limits.HitboxMaxLog then
+                        table.remove(self.Events, 1)
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+    Utils.ok("📊 Hitbox Tracker: เริ่ม")
+end
+
+function HitboxTracker:getStats()
+    local stats = {}
+    for _, e in ipairs(self.Events) do
+        if e.Duration then
+            stats[e.Name] = stats[e.Name] or {
+                count = 0, totalDur = 0,
+                minDur = math.huge, maxDur = 0,
+            }
+            local s = stats[e.Name]
+            s.count = s.count + 1
+            s.totalDur = s.totalDur + e.Duration
+            s.minDur = math.min(s.minDur, e.Duration)
+            s.maxDur = math.max(s.maxDur, e.Duration)
+        end
+    end
+    for _, s in pairs(stats) do
+        s.avgDur = s.totalDur / s.count
+    end
+    return stats
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 12: ANALYZER                     ║
+-- ╚═══════════════════════════════════════════╝
+local Analyzer = {}
+
+function Analyzer.analyze(dump, extra)
+    extra = extra or {}
+    local report = { Summary = {}, Hints = {}, Recommendations = {}, Risks = {} }
+
+    report.Summary.Collectibles = #(dump.Collectibles or {})
+    report.Summary.Enemies = #(dump.Enemies or {})
+    report.Summary.Portals = #(dump.Portals or {})
+    report.Summary.Remotes = #(dump.Remotes or {})
+    report.Summary.Hitboxes = #(dump.Hitboxes or {})
+    report.Summary.Spawns = #(dump.Spawns or {})
+
+    local interested = 0
+    for _, r in ipairs(dump.Remotes or {}) do
+        if r.Interested then interested = interested + 1 end
+    end
+    report.Summary.InterestedRemotes = interested
+    report.Summary.AntiCheat = #(dump.AntiCheatSuspects or {})
+    report.Summary.SniffedRemotes = #(extra.SnifferLog or {})
+    report.Summary.HitboxEvents = #(extra.HitboxEvents or {})
+
+    if report.Summary.Collectibles > 0 then
+        table.insert(report.Hints, "✅ Auto Collect: " .. report.Summary.Collectibles .. " จุด")
+        table.insert(report.Recommendations, {
+            Type = "AutoCollect", Feasible = true,
+            Sample = dump.Collectibles[1],
+        })
+    else
+        table.insert(report.Hints, "❌ Auto Collect: ไม่พบ (ปรับ pattern)")
+    end
+
+    if report.Summary.Enemies > 0 then
+        table.insert(report.Hints, "✅ Auto Farm: " .. report.Summary.Enemies .. " targets")
+        table.insert(report.Recommendations, {
+            Type = "AutoFarm", Feasible = true,
+            Sample = dump.Enemies[1],
+        })
+    end
+
+    if report.Summary.Hitboxes > 0 then
+        table.insert(report.Hints, "✅ Auto Parry: " .. report.Summary.Hitboxes .. " hitboxes")
+        table.insert(report.Recommendations, {
+            Type = "AutoParry", Feasible = true,
+            Sample = dump.Hitboxes[1],
+        })
+    end
+
+    if report.Summary.InterestedRemotes > 0 then
+        table.insert(report.Hints, "✅ Remotes สนใจ: " .. report.Summary.InterestedRemotes .. " ตัว")
+    end
+
+    if report.Summary.Portals > 0 then
+        table.insert(report.Hints, "✅ Portals: " .. report.Summary.Portals .. " จุด")
+    end
+
+    if report.Summary.SniffedRemotes > 0 then
+        table.insert(report.Hints, "✅ Sniffer จับได้: " .. report.Summary.SniffedRemotes .. " events")
+    end
+
+    if report.Summary.AntiCheat > 0 then
+        table.insert(report.Risks, "⚠️ Anti-Cheat: " .. report.Summary.AntiCheat .. " สัญญาณ")
+        report.AntiCheatList = dump.AntiCheatSuspects
+    else
+        table.insert(report.Risks, "✅ ไม่พบ Anti-Cheat ชัดเจน")
+    end
+
+    return report
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 13: MAIN                         ║
+-- ╚═══════════════════════════════════════════╝
+
+local startTime = tick()
+
+Utils.log("═══════════════════════════════════════")
+Utils.log("Dump Framework V" .. Config.Version .. " | by " .. Config.Author)
+Utils.log("═══════════════════════════════════════")
+
+-- Stealth init
+Stealth.init()
+
+local extractor = Extractor.new(Config)
+local serializer = Serializer.new(Config)
+local summary = {}
+
+-- 00) STEALTH REPORT
+if Config.Stealth.Enabled then
+    serializer:save("00_stealth_report", {
+        Enabled = true,
+        Version = Config.Version,
+        Capabilities = caps,
+        DetectedHooks = Stealth.Threats,
+        Settings = Config.Stealth,
     })
 end
-print("[Dump] Players: " .. #data.Players)
 
--- ★ แปลงเป็น JSON
-print("[Dump] กำลังแปลงเป็น JSON...")
-local json = HttpService:JSONEncode(data)
-
--- ★ บันทึกไฟล์
-local fileName = "map_dump_" .. game.PlaceId .. "_" .. os.time() .. ".json"
-local success, err = pcall(function()
-    writefile(fileName, json)
-end)
-
-if success then
-    local elapsed = tick() - startTime
-    print("========================================")
-    print("[Dump] สำเร็จ!")
-    print("[Dump] ไฟล์: " .. fileName)
-    print("[Dump] ขนาด: " .. math.floor(#json / 1024) .. " KB")
-    print("[Dump] เวลา: " .. string.format("%.2f", elapsed) .. " วินาที")
-    print("========================================")
-else
-    warn("[Dump] ล้มเหลว: " .. tostring(err))
-    warn("[Dump] ต้องใช้ Delta PC + writefile")
+-- 01) INFO
+if Config.Targets.Info then
+    serializer:save("01_info", collectInfo())
+    summary["Info"] = "OK"
 end
+
+-- 02) PLAYERS
+if Config.Targets.Players then
+    local players = collectPlayers()
+    serializer:save("02_players", players)
+    summary["Players"] = #players
+end
+
+-- 03) PLAYERS CHARACTER
+if Config.Targets.PlayersCharacter then
+    local d = collectPlayerCharDetail()
+    serializer:save("03_players_character", d)
+    summary["PlayersCharacter"] = "OK"
+end
+
+-- 04) WORKSPACE
+if Config.Targets.Workspace then
+    Utils.log("Dumping Workspace...")
+    extractor.count = 0
+    local wsData, wsCount = extractor:dumpContainer(workspace)
+    serializer:save("04_workspace", wsData)
+    summary["Workspace"] = wsCount
+end
+
+-- 05) WORKSPACE TREE
+if Config.Targets.WorkspaceGrouped then
+    local tree = extractor:buildTree(workspace, 4)
+    serializer:save("05_workspace_tree", tree)
+    summary["WorkspaceTree"] = "OK"
+end
+
+-- 06) REPLICATEDSTORAGE
+if Config.Targets.ReplicatedStorage then
+    Utils.log("Dumping ReplicatedStorage...")
+    extractor.count = 0
+    local rsData, rsCount = extractor:dumpContainer(ReplicatedStorage)
+    serializer:save("06_replicatedstorage", rsData)
+    summary["ReplicatedStorage"] = rsCount
+end
+
+-- 07) LIGHTING
+if Config.Targets.Lighting then
+    extractor.count = 0
+    local liData, liCount = extractor:dumpContainer(Lighting)
+    serializer:save("07_lighting", liData)
+    summary["Lighting"] = liCount
+end
+
+-- 08) SOUNDS
+if Config.Targets.SoundService then
+    local sounds = collectSounds()
+    serializer:save("08_sounds", sounds)
+    summary["Sounds"] = #sounds
+end
+
+-- 09) STARTERGUI
+if Config.Targets.StarterGui then
+    local ok, guiData = pcall(function()
+        return extractor:dumpContainer(StarterGui)
+    end)
+    if ok then
+        serializer:save("09_startergui", guiData)
+        summary["StarterGui"] = #guiData
+    end
+end
+
+-- 10) TERRAIN
+if Config.Targets.TerrainInfo then
+    local t = collectTerrainInfo()
+    serializer:save("10_terrain", t)
+    summary["Terrain"] = t.Exists and "OK" or "None"
+end
+
+-- 11) SMART SCAN
+local smartData
+if Config.Targets.SmartScan then
+    Utils.log("═══════════════════════════════════════")
+    Utils.log("🔍 SMART SCAN")
+    Utils.log("═══════════════════════════════════════")
+    smartData = SmartScan.scan()
+
+    serializer:save("11_smart_collectibles", smartData.Collectibles)
+    serializer:save("12_smart_enemies", smartData.Enemies)
+    serializer:save("13_smart_portals", smartData.Portals)
+    serializer:save("14_smart_remotes", smartData.Remotes)
+    serializer:save("15_smart_hitboxes", smartData.Hitboxes)
+    serializer:save("16_smart_spawns", smartData.Spawns)
+    serializer:save("17_smart_anticheat", smartData.AntiCheatSuspects)
+
+    summary["Collectibles"] = #smartData.Collectibles
+    summary["Enemies"] = #smartData.Enemies
+    summary["Portals"] = #smartData.Portals
+    summary["Remotes"] = #smartData.Remotes
+    summary["Hitboxes"] = #smartData.Hitboxes
+    summary["Spawns"] = #smartData.Spawns
+    summary["AntiCheat"] = #smartData.AntiCheatSuspects
+end
+
+-- 18) REMOTE SNIFFER
+if Config.Targets.RemoteSniffer then
+    Sniffer.start()
+    -- ปล่อยให้ sniffer ทำงานสักพัก
+    Utils.log("รอ Sniffer เก็บข้อมูล 5 วิ...")
+    task.wait(5)
+end
+
+-- 19) HITBOX TRACKER
+if Config.Targets.HitboxTracker and smartData then
+    local names = {}
+    for _, h in ipairs(smartData.Hitboxes) do
+        table.insert(names, h.Name)
+    end
+    if #names > 0 then
+        HitboxTracker:watch(names)
+        HitboxTracker:start()
+        Utils.log("รอ Hitbox Tracker เก็บข้อมูล 5 วิ...")
+        task.wait(5)
+    end
+end
+
+-- 20) SAVE SNIFFER LOG
+if Config.Targets.RemoteSniffer then
+    serializer:save("19_sniffer_log", Sniffer.Log)
+    serializer:save("20_sniffer_summary", Sniffer.getSummary())
+    summary["SniffedEvents"] = #Sniffer.Log
+end
+
+-- 21) SAVE HITBOX STATS
+if Config.Targets.HitboxTracker then
+    serializer:save("21_hitbox_events", HitboxTracker.Events)
+    serializer:save("22_hitbox_stats", HitboxTracker:getStats())
+    summary["HitboxEvents"] = #HitboxTracker.Events
+end
+
+-- 23) ANALYSIS
+if Config.Targets.Analysis and smartData then
+    Utils.log("═══════════════════════════════════════")
+    Utils.log("🧠 ANALYZE")
+    Utils.log("═══════════════════════════════════════")
+
+    local report = Analyzer.analyze(smartData, {
+        SnifferLog = Sniffer.Log,
+        HitboxEvents = HitboxTracker.Events,
+    })
+
+    for _, h in ipairs(report.Hints) do Utils.hint(h) end
+    for _, r in ipairs(report.Risks) do Utils.warn(r) end
+
+    serializer:save("23_analysis_report", report)
+    summary["Analysis"] = "OK"
+end
+
+-- 24) INDEX
+serializer:saveIndex()
+
+-- Result
+local elapsed = tick() - startTime
+summary["Total Time (s)"] = string.format("%.2f", elapsed)
+summary["Total Objects"] = extractor.count
+
+Utils.printSummary(summary, "Dump V3.0 Complete")
+
+Utils.log("═══════════════════════════════════════")
+Utils.log("📂 ไฟล์ทั้งหมด: " .. Config.OutputFolder)
+Utils.log("📄 ดู _INDEX_*.json")
+Utils.log("═══════════════════════════════════════")
