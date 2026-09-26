@@ -1,47 +1,73 @@
 -- ╔══════════════════════════════════════╗
--- ║  AB Test Suite V2.3                  ║
+-- ║  Auto Block Minimal + GUI            ║
+-- ║  Base: Minimal (รันได้)              ║
+-- ║  + Save Button + Kill Button         ║
 -- ╚══════════════════════════════════════╝
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
 local LP = Players.LocalPlayer
+local VIM = VirtualInputManager
+local RS = ReplicatedStorage
 
+-- ═══════════════════════════════════════
+-- FIND REMOTES
+-- ═══════════════════════════════════════
+local function findRemote(path)
+    local ok, obj = pcall(function()
+        local cur = RS
+        for _, part in ipairs(string.split(path, ".")) do
+            cur = cur:FindFirstChild(part)
+            if not cur then return nil end
+        end
+        return cur
+    end)
+    if ok then return obj end
+    return nil
+end
+
+local HitRemote = findRemote("Knit.Knit.Services.HandicapService.RE.Hit")
+local BlockRemote = findRemote("Knit.Knit.Services.BlockService.RE.Activated")
+local BlockDeact = findRemote("Knit.Knit.Services.BlockService.RE.Deactivated")
+
+-- ═══════════════════════════════════════
+-- LOGGER
+-- ═══════════════════════════════════════
 local Logger = {
     Lines = {},
-    FilePath = "ABTest_" .. os.date("%Y%m%d_%H%M%S") .. ".txt",
-    JsonPath = "ABTest_" .. os.date("%Y%m%d_%H%M%S") .. ".json",
-    Enabled = true,
+    FilePath = "ABMin_" .. os.date("%Y%m%d_%H%M%S") .. ".txt",
+    JsonPath = "ABMin_" .. os.date("%Y%m%d_%H%M%S") .. ".json",
     Data = {
         meta = {
-            version = "2.3",
+            version = "3.0",
             startedAt = os.date("%Y-%m-%d %H:%M:%S"),
             placeId = game.PlaceId,
             jobId = game.JobId,
             player = LP.Name,
         },
-        blockProbe = {},
-        faceTest = {},
-        blockRemoteTests = {},
-        blockKeyboardTests = {},
-        liveDetections = {},
-        autoBlocks = {},
+        blocks = {},
     },
 }
 
-local _writeFn = writefile or write_file
-local _appendFn = appendfile or append_file
+local writeFn = writefile or write_file
+local appendFn = appendfile or append_file
 
-local function _write(path, data)
-    if _writeFn then pcall(_writeFn, path, data) end
+local function writeFile(path, data)
+    if writeFn then return pcall(writeFn, path, data) end
+    return false
 end
 
-local function _append(path, data)
-    if _appendFn then pcall(_appendFn, path, data) end
+local function appendFile(path, data)
+    if appendFn then return pcall(appendFn, path, data) end
+    if writeFn and readfile then
+        local ok, old = pcall(readfile, path)
+        return pcall(writeFn, path, (ok and old or "") .. data)
+    end
+    return false
 end
 
 local function log(...)
@@ -51,713 +77,458 @@ local function log(...)
         parts[i] = tostring(args[i])
     end
     local line = table.concat(parts, " ")
-    print("[TEST]", line)
+    print("[AB]", line)
     table.insert(Logger.Lines, line)
-    if Logger.Enabled then
-        _append(Logger.FilePath, line .. "\n")
-    end
+    appendFile(Logger.FilePath, line .. "\n")
 end
 
-local function flushJson()
-    local ok, json = pcall(HttpService.JSONEncode, HttpService, Logger.Data)
-    if ok and json then
-        _write(Logger.JsonPath, json)
-    end
-end
+-- Header
+writeFile(Logger.FilePath,
+    "===========================================\n" ..
+    "  Auto Block Minimal + GUI\n" ..
+    "  Started: " .. os.date("%Y-%m-%d %H:%M:%S") .. "\n" ..
+    "  PlaceId: " .. tostring(game.PlaceId) .. "\n" ..
+    "  JobId:   " .. tostring(game.JobId) .. "\n" ..
+    "  Player:  " .. LP.Name .. "\n" ..
+    "===========================================\n\n")
 
-_write(Logger.FilePath, "AB Test Suite V2.3\nStarted: " .. os.date("%Y-%m-%d %H:%M:%S") .. "\n\n")
+-- ═══════════════════════════════════════
+-- STATE
+-- ═══════════════════════════════════════
+local State = {
+    Enabled = false,
+    Destroyed = false,
+    BlockCount = 0,
+    FaceCount = 0,
+    SkipCount = 0,
+    LastEnemy = "-",
+    LastDistance = 0,
+    HitConn = nil,
+    LastFaceLoop = nil,
+}
 
-local function section(t)
-    log("")
-    log("======== " .. t .. " ========")
-end
-
+-- ═══════════════════════════════════════
+-- UTILS
+-- ═══════════════════════════════════════
 local function getMyChar()
-    local char = LP.Character
-    if not char then return nil, nil, nil end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    return char, hrp, hum
+    local c = LP.Character
+    if not c then return nil, nil end
+    return c, c:FindFirstChild("HumanoidRootPart")
 end
 
-local function getServices()
-    local knit = ReplicatedStorage:FindFirstChild("Knit")
-    if not knit then return nil end
-    local kk = knit:FindFirstChild("Knit")
-    if not kk then return nil end
-    return kk:FindFirstChild("Services")
-end
+local function findEnemy()
+    local char, myHRP = getMyChar()
+    if not myHRP then return nil, math.huge, "-" end
 
-local function takeSnapshot()
-    local snap = {
-        timeStr = os.date("%H:%M:%S"),
-    }
-    local char, hrp, hum = getMyChar()
-    if not char then return snap end
+    local chars = workspace:FindFirstChild("Characters")
+    if not chars then return nil, math.huge, "-" end
 
-    if hum then
-        snap.hp = hum.Health
-        snap.state = tostring(hum:GetState())
-        snap.walkspeed = hum.WalkSpeed
-    end
-
-    snap.anims = {}
-    if hum then
-        local animator = hum:FindFirstChildOfClass("Animator")
-        if animator then
-            for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
-                table.insert(snap.anims, t.Animation.Name)
+    local nearest = nil
+    local minD = 30
+    local name = "-"
+    for _, c in ipairs(chars:GetChildren()) do
+        if c:IsA("Model") and c.Name ~= LP.Name then
+            local h = c:FindFirstChild("HumanoidRootPart")
+            if h then
+                local hum = c:FindFirstChildOfClass("Humanoid")
+                if not hum or hum.Health > 0 then
+                    local d = (h.Position - myHRP.Position).Magnitude
+                    if d < minD then
+                        nearest = h
+                        minD = d
+                        name = c.Name
+                    end
+                end
             end
         end
     end
-
-    snap.sounds = {}
-    for _, obj in ipairs(char:GetDescendants()) do
-        if obj:IsA("Sound") and obj.Playing then
-            table.insert(snap.sounds, obj.Name)
-        end
-    end
-
-    if hrp then
-        snap.pos = tostring(math.floor(hrp.Position.X)) .. "," ..
-                   tostring(math.floor(hrp.Position.Y)) .. "," ..
-                   tostring(math.floor(hrp.Position.Z))
-    end
-
-    return snap
+    return nearest, minD, name
 end
 
-local function diffSnapshots(a, b)
-    local diffs = {}
-    if a.hp ~= b.hp then
-        table.insert(diffs, "hp: " .. tostring(a.hp) .. " -> " .. tostring(b.hp))
-    end
-    if a.state ~= b.state then
-        table.insert(diffs, "state: " .. tostring(a.state) .. " -> " .. tostring(b.state))
-    end
-    if a.walkspeed ~= b.walkspeed then
-        table.insert(diffs, "walkspeed: " .. tostring(a.walkspeed) .. " -> " .. tostring(b.walkspeed))
-    end
+local function doFace()
+    local enemy = findEnemy()
+    if not enemy then return false end
+    local _, myHRP = getMyChar()
+    if not myHRP then return false end
 
-    local aa = {}
-    for _, x in ipairs(a.anims or {}) do aa[x] = true end
-    for _, x in ipairs(b.anims or {}) do
-        if not aa[x] then
-            table.insert(diffs, "anim+ " .. x)
-        end
+    local ok = pcall(function()
+        myHRP.CFrame = CFrame.lookAt(myHRP.Position,
+            Vector3.new(enemy.Position.X, myHRP.Position.Y, enemy.Position.Z))
+    end)
+    if ok then
+        State.FaceCount = State.FaceCount + 1
     end
-
-    local as = {}
-    for _, x in ipairs(a.sounds or {}) do as[x] = true end
-    for _, x in ipairs(b.sounds or {}) do
-        if not as[x] then
-            table.insert(diffs, "sound+ " .. x)
-        end
-    end
-
-    return diffs
-end
-
-local function printSnapshot(label, s)
-    log("  [" .. label .. "] " .. (s.timeStr or "?"))
-    log("    hp=" .. tostring(s.hp) .. " state=" .. tostring(s.state))
-    if #(s.anims or {}) > 0 then
-        log("    anims: " .. table.concat(s.anims, ", "))
-    end
-    if #(s.sounds or {}) > 0 then
-        log("    sounds: " .. table.concat(s.sounds, ", "))
-    end
+    return ok
 end
 
 -- ═══════════════════════════════════════
--- 1. BLOCK PROBE
+-- BLOCK ACTIONS
 -- ═══════════════════════════════════════
-local function blockProbe()
-    section("BLOCK PROBE")
-    local services = getServices()
-    if not services then
-        log("No Knit.Services")
+local function pressKeyF()
+    return pcall(function()
+        VIM:SendKeyEvent(true, "F", false, game)
+    end)
+end
+
+local function releaseKeyF()
+    return pcall(function()
+        VIM:SendKeyEvent(false, "F", false, game)
+    end)
+end
+
+local function fireBlockRemote()
+    if not BlockRemote then return false end
+    return pcall(function() BlockRemote:FireServer() end)
+end
+
+local function fireReleaseRemote()
+    if not BlockDeact then return false end
+    return pcall(function() BlockDeact:FireServer() end)
+end
+
+-- ═══════════════════════════════════════
+-- ON HIT
+-- ═══════════════════════════════════════
+local function onHit(victim)
+    if State.Destroyed then return end
+    if not State.Enabled then return end
+
+    if typeof(victim) ~= "Instance" then
+        State.SkipCount = State.SkipCount + 1
+        return
+    end
+    if victim.Name ~= LP.Name then
+        State.SkipCount = State.SkipCount + 1
         return
     end
 
-    local result = {}
-    local bs = services:FindFirstChild("BlockService")
-    if bs then
-        result.blockService = {}
-        for _, obj in ipairs(bs:GetDescendants()) do
-            log(obj.ClassName .. " | " .. obj:GetFullName())
-            table.insert(result.blockService, {
-                class = obj.ClassName,
-                path = obj:GetFullName(),
-            })
-        end
+    -- Find enemy
+    local enemy, dist, name = findEnemy()
+    if not enemy then
+        log("Hit at " .. os.date("%H:%M:%S") .. " - no enemy")
+        State.SkipCount = State.SkipCount + 1
+        return
     end
 
-    local hs = services:FindFirstChild("HandicapService")
-    if hs then
-        result.handicap = {}
-        for _, obj in ipairs(hs:GetDescendants()) do
-            if obj:IsA("RemoteEvent") or obj.ClassName == "UnreliableRemoteEvent" then
-                log(obj.ClassName .. " | " .. obj:GetFullName())
-                table.insert(result.handicap, {
-                    class = obj.ClassName,
-                    path = obj:GetFullName(),
-                })
-            end
-        end
-    end
+    -- Update state
+    State.BlockCount = State.BlockCount + 1
+    State.LastEnemy = name
+    State.LastDistance = math.floor(dist)
 
-    Logger.Data.blockProbe = result
-    flushJson()
-    section("END BLOCK PROBE")
+    -- 1. Face
+    doFace()
+
+    -- 2. Block (keyboard + remote)
+    pressKeyF()
+    fireBlockRemote()
+
+    -- 3. Release after 500ms
+    task.delay(0.5, function()
+        releaseKeyF()
+        fireReleaseRemote()
+    end)
+
+    -- Log
+    log("Block #" .. State.BlockCount .. " vs " .. name ..
+        " (d=" .. math.floor(dist) .. ") at " .. os.date("%H:%M:%S"))
+
+    -- Save to JSON
+    table.insert(Logger.Data.blocks, {
+        index = State.BlockCount,
+        time = os.date("%H:%M:%S"),
+        enemy = name,
+        distance = math.floor(dist),
+    })
+
+    if updateGui then updateGui() end
 end
 
 -- ═══════════════════════════════════════
--- 2. FACE TEST
+-- FACE LOOP (หันตลอด)
 -- ═══════════════════════════════════════
-local faceEnabled = false
-local faceConn = nil
-
-local function findNearestEnemy(range)
-    range = range or 30
-    local _, myHRP = getMyChar()
-    if not myHRP then return nil end
-    local nearest = nil
-    local minD = range
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP and plr.Character then
-            local h = plr.Character:FindFirstChild("HumanoidRootPart")
-            if h then
-                local d = (h.Position - myHRP.Position).Magnitude
-                if d < minD then
-                    nearest = h
-                    minD = d
-                end
-            end
+local function startFaceLoop()
+    if State.LastFaceLoop then return end
+    State.LastFaceLoop = task.spawn(function()
+        while not State.Destroyed and State.Enabled do
+            doFace()
+            task.wait(0.1)
         end
-    end
-    return nearest
-end
-
-local function startFaceTest()
-    if faceEnabled then return end
-    faceEnabled = true
-    Logger.Data.faceTest.enabled = true
-    section("FACE TEST ON")
-
-    faceConn = RunService.RenderStepped:Connect(function()
-        if not faceEnabled then return end
-        local _, hrp = getMyChar()
-        if not hrp then return end
-        local target = findNearestEnemy(30)
-        if target then
-            local dir = (target.Position - hrp.Position).Unit
-            local newCF = CFrame.lookAt(hrp.Position, hrp.Position + dir)
-            hrp.CFrame = hrp.CFrame:Lerp(newCF, 0.35)
-        end
+        State.LastFaceLoop = nil
     end)
 end
 
-local function stopFaceTest()
-    faceEnabled = false
-    Logger.Data.faceTest.enabled = false
-    if faceConn then
-        faceConn:Disconnect()
-        faceConn = nil
-    end
-    flushJson()
-    section("FACE TEST OFF")
-end
-
 -- ═══════════════════════════════════════
--- 3. BLOCK REMOTE TEST
+-- START / STOP / SAVE / DESTROY
 -- ═══════════════════════════════════════
-local function testBlockRemote()
-    section("BLOCK REMOTE TEST")
+local updateGui
 
-    local before = takeSnapshot()
-    log("BEFORE")
-    printSnapshot("before", before)
+local function start()
+    if State.Destroyed or State.Enabled then return end
 
-    local services = getServices()
-    local bs = services and services:FindFirstChild("BlockService")
-    local activated = bs and bs.RE and bs.RE:FindFirstChild("Activated")
-    local deactivated = bs and bs.RE and bs.RE:FindFirstChild("Deactivated")
-
-    if activated then
-        local ok = pcall(function() activated:FireServer() end)
-        log("Activated FireServer: " .. tostring(ok))
+    if HitRemote then
+        State.HitConn = HitRemote.OnClientEvent:Connect(onHit)
+        log("Hook Hit: OK")
     else
-        log("No Activated remote")
+        log("Hook Hit: FAIL - no remote")
+        return
     end
 
-    task.wait(0.5)
-    local after = takeSnapshot()
-    printSnapshot("after", after)
-
-    log("DIFFS")
-    local diffs = diffSnapshots(before, after)
-    for _, d in ipairs(diffs) do
-        log("  " .. d)
-    end
-
-    if deactivated then
-        pcall(function() deactivated:FireServer() end)
-    end
-
-    table.insert(Logger.Data.blockRemoteTests, {
-        time = os.date("%Y-%m-%d %H:%M:%S"),
-        before = before,
-        after = after,
-        diffs = diffs,
-    })
-    flushJson()
-
-    section("END BLOCK REMOTE TEST")
+    State.Enabled = true
+    startFaceLoop()
+    log("========== START ==========")
+    if updateGui then updateGui() end
 end
 
--- ═══════════════════════════════════════
--- 4. BLOCK KEYBOARD TEST
--- ═══════════════════════════════════════
-local function testBlockKeyboard()
-    section("BLOCK KEYBOARD TEST")
+local function stop()
+    if not State.Enabled then return end
 
-    local before = takeSnapshot()
-    log("BEFORE")
-    printSnapshot("before", before)
-
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, "F", false, game)
-    end)
-
-    task.wait(0.5)
-
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(false, "F", false, game)
-    end)
-
-    task.wait(0.3)
-    local after = takeSnapshot()
-    printSnapshot("after", after)
-
-    log("DIFFS")
-    local diffs = diffSnapshots(before, after)
-    for _, d in ipairs(diffs) do
-        log("  " .. d)
+    if State.HitConn then
+        State.HitConn:Disconnect()
+        State.HitConn = nil
     end
 
-    table.insert(Logger.Data.blockKeyboardTests, {
-        time = os.date("%Y-%m-%d %H:%M:%S"),
-        before = before,
-        after = after,
-        diffs = diffs,
-    })
-    flushJson()
-
-    section("END BLOCK KEYBOARD TEST")
+    releaseKeyF()
+    State.Enabled = false
+    log("========== STOP ==========")
+    log("Total blocks: " .. State.BlockCount)
+    if updateGui then updateGui() end
 end
 
--- ═══════════════════════════════════════
--- 5. LIVE DETECTION
--- ═══════════════════════════════════════
-local liveEnabled = false
-local liveConn = nil
-local detected = {}
-
-local function isCloseHitbox(obj, maxDist)
-    if not obj:IsA("BasePart") then return false, nil end
-    local _, hrp = getMyChar()
-    if not hrp then return false, nil end
-    local d = (obj.Position - hrp.Position).Magnitude
-    if d > maxDist then return false, nil end
-
-    local lower = string.lower(obj.Name)
-    local isHit = false
-    if lower:find("hitbox") or lower:find("hitglow")
-       or lower:find("slashhit") or lower:find("chasehit")
-       or lower:find("hardhit") or lower:find("roughhit")
-       or lower:find("grabcollision") then
-        isHit = true
-    end
-    if not isHit then
-        if obj.Transparency >= 0.7 and obj.CanCollide == false
-           and obj.Massless == true then
-            isHit = true
-        end
-    end
-    if not isHit then return false, nil end
-
-    local owner = nil
-    local anc = obj.Parent
-    for _ = 1, 6 do
-        if not anc then break end
-        if anc:IsA("Model") then
-            local p = Players:GetPlayerFromCharacter(anc)
-            if p then
-                owner = p.Name
-                break
-            end
-            if anc:FindFirstChildOfClass("Humanoid") then
-                owner = anc.Name
-                break
-            end
-        end
-        anc = anc.Parent
-    end
-
-    return true, {
-        name = obj.Name,
-        class = obj.ClassName,
-        distance = math.floor(d),
-        position = tostring(math.floor(obj.Position.X)) .. "," ..
-                   tostring(math.floor(obj.Position.Y)) .. "," ..
-                   tostring(math.floor(obj.Position.Z)),
-        owner = owner or "?",
-        path = obj:GetFullName(),
-    }
-end
-
-local function startLiveTest()
-    if liveEnabled then return end
-    liveEnabled = true
-    detected = {}
-    section("LIVE DETECTION ON")
-
-    local tick0 = tick()
-    local nextScan = tick0
-
-    liveConn = RunService.Heartbeat:Connect(function()
-        if not liveEnabled then return end
-        if tick() < nextScan then return end
-        nextScan = tick() + 0.05
-
-        local _, hrp = getMyChar()
-        if not hrp then return end
-
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") then
-                local isHit, info = isCloseHitbox(obj, 25)
-                if isHit and info then
-                    local key = info.path
-                    if not detected[key] then
-                        detected[key] = true
-                        log(string.format("%.1fs | %s | owner=%s | d=%d",
-                            tick() - tick0, info.name, info.owner, info.distance))
-
-                        table.insert(Logger.Data.liveDetections, {
-                            time = os.date("%H:%M:%S"),
-                            elapsed = tick() - tick0,
-                            name = info.name,
-                            owner = info.owner,
-                            distance = info.distance,
-                            path = info.path,
-                        })
-                        flushJson()
-                    end
-                end
-            end
-        end
-    end)
-end
-
-local function stopLiveTest()
-    liveEnabled = false
-    if liveConn then
-        liveConn:Disconnect()
-        liveConn = nil
-    end
-    local count = 0
-    for _ in pairs(detected) do count = count + 1 end
-    log("Live detected: " .. count)
-    flushJson()
-    section("LIVE DETECTION OFF")
-end
-
--- ═══════════════════════════════════════
--- 6. AUTO BLOCK
--- ═══════════════════════════════════════
-local abEnabled = false
-local abConn = nil
-local lastBlock = 0
-local abCount = 0
-
-local function tryBlock()
-    local services = getServices()
-    local bs = services and services:FindFirstChild("BlockService")
-    local act = bs and bs.RE and bs.RE:FindFirstChild("Activated")
-    if act then
-        local ok = pcall(function() act:FireServer() end)
-        if ok then return "remote" end
-    end
-    local ok = pcall(function()
-        VirtualInputManager:SendKeyEvent(true, "F", false, game)
-    end)
-    if ok then return "keyboard" end
-    return nil
-end
-
-local function releaseBlock()
-    local services = getServices()
-    local bs = services and services:FindFirstChild("BlockService")
-    local deact = bs and bs.RE and bs.RE:FindFirstChild("Deactivated")
-    if deact then
-        pcall(function() deact:FireServer() end)
-    end
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(false, "F", false, game)
-    end)
-end
-
-local function startAutoBlock()
-    if abEnabled then return end
-    abEnabled = true
-    abCount = 0
-    section("AUTO BLOCK ON")
-
-    abConn = RunService.Heartbeat:Connect(function()
-        if not abEnabled then return end
-        if tick() - lastBlock < 0.3 then return end
-
-        local _, hrp = getMyChar()
-        if not hrp then return end
-
-        local closest = nil
-        local minD = 15
-        local closestInfo = nil
-
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") then
-                local isHit, info = isCloseHitbox(obj, 15)
-                if isHit and info then
-                    if info.distance < minD then
-                        closest = obj
-                        closestInfo = info
-                        minD = info.distance
-                    end
-                end
-            end
-        end
-
-        if closest then
-            local dir = (closest.Position - hrp.Position).Unit
-            local newCF = CFrame.lookAt(hrp.Position, hrp.Position + dir)
-            hrp.CFrame = hrp.CFrame:Lerp(newCF, 0.5)
-
-            local method = tryBlock()
-            lastBlock = tick()
-            abCount = abCount + 1
-            log("BLOCK #" .. abCount .. " (" .. tostring(method) ..
-                ") <- " .. closestInfo.name .. " d=" .. closestInfo.distance)
-
-            table.insert(Logger.Data.autoBlocks, {
-                index = abCount,
-                time = os.date("%H:%M:%S"),
-                method = method,
-                target = closestInfo.name,
-                distance = closestInfo.distance,
-            })
-            flushJson()
-
-            task.delay(0.25, function()
-                if abEnabled then releaseBlock() end
-            end)
-        end
-    end)
-end
-
-local function stopAutoBlock()
-    abEnabled = false
-    if abConn then
-        abConn:Disconnect()
-        abConn = nil
-    end
-    releaseBlock()
-    log("Total blocks: " .. abCount)
-    flushJson()
-    section("AUTO BLOCK OFF")
-end
-
--- ═══════════════════════════════════════
--- SAVE / KILL
--- ═══════════════════════════════════════
 local function saveAll()
+    -- Save TXT
     log("")
-    log("======== SAVE ========")
-    log("Time: " .. os.date("%Y-%m-%d %H:%M:%S"))
-    log("Lines: " .. #Logger.Lines)
+    log("========== SAVE at " .. os.date("%H:%M:%S") .. " ==========")
+    log("Blocks: " .. State.BlockCount)
+    log("Faces: " .. State.FaceCount)
+    log("Skips: " .. State.SkipCount)
 
-    _write(Logger.FilePath, table.concat(Logger.Lines, "\n"))
+    writeFile(Logger.FilePath, table.concat(Logger.Lines, "\n"))
 
+    -- Save JSON
     Logger.Data.meta.savedAt = os.date("%Y-%m-%d %H:%M:%S")
-    flushJson()
+    Logger.Data.meta.totalBlocks = State.BlockCount
+    Logger.Data.meta.totalFaces = State.FaceCount
+    local ok, json = pcall(function()
+        return HttpService:JSONEncode(Logger.Data)
+    end)
+    if ok and json then
+        writeFile(Logger.JsonPath, json)
+    end
 
-    print("[TEST] TXT:  " .. Logger.FilePath)
-    print("[TEST] JSON: " .. Logger.JsonPath)
+    print("[AB] Saved TXT:  " .. Logger.FilePath)
+    print("[AB] Saved JSON: " .. Logger.JsonPath)
 end
 
 local function destroy()
-    log("DESTROY")
-
-    if faceEnabled then stopFaceTest() end
-    if liveEnabled then stopLiveTest() end
-    if abEnabled then stopAutoBlock() end
-
+    if State.Destroyed then return end
+    log("========== DESTROY ==========")
+    State.Destroyed = true
+    stop()
     saveAll()
 
     local pg = LP:FindFirstChild("PlayerGui")
     if pg then
-        local g = pg:FindFirstChild("AB_TestSuite")
-        if g then
-            pcall(function() g:Destroy() end)
-        end
+        local g = pg:FindFirstChild("ABMin")
+        if g then pcall(function() g:Destroy() end) end
     end
 
-    _G.ABTestSuite = nil
+    _G.ABMIN = nil
 end
 
 -- ═══════════════════════════════════════
 -- GUI
 -- ═══════════════════════════════════════
+local gui, mainBtn, statusLbl, statsLbl, saveBtn, killBtn
+
+function updateGui()
+    if not mainBtn then return end
+    if State.Enabled then
+        mainBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+        mainBtn.Text = "AUTO BLOCK\nON"
+        statusLbl.Text = "Status: Active"
+        statusLbl.TextColor3 = Color3.fromRGB(100, 255, 100)
+    else
+        mainBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+        mainBtn.Text = "AUTO BLOCK\nOFF"
+        statusLbl.Text = "Status: Idle"
+        statusLbl.TextColor3 = Color3.fromRGB(255, 150, 150)
+    end
+end
+
 local function buildGui()
     local pg = LP:WaitForChild("PlayerGui")
+    local old = pg:FindFirstChild("ABMin")
+    if old then pcall(function() old:Destroy() end) end
 
-    local old = pg:FindFirstChild("AB_TestSuite")
-    if old then
-        pcall(function() old:Destroy() end)
-    end
-
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "AB_TestSuite"
+    gui = Instance.new("ScreenGui")
+    gui.Name = "ABMin"
     gui.ResetOnSpawn = false
     gui.Parent = pg
 
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 320, 0, 580)
-    frame.Position = UDim2.new(0, 20, 0, 60)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    frame.BorderSizePixel = 0
-    frame.Parent = gui
+    -- Main button
+    mainBtn = Instance.new("TextButton")
+    mainBtn.Size = UDim2.new(0, 180, 0, 74)
+    mainBtn.Position = UDim2.new(0, 20, 0.32, 0)
+    mainBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+    mainBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    mainBtn.Text = "AUTO BLOCK\nOFF"
+    mainBtn.TextSize = 15
+    mainBtn.Font = Enum.Font.GothamBold
+    mainBtn.Parent = gui
+    mainBtn.Active = true
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = frame
+    local mc = Instance.new("UICorner")
+    mc.CornerRadius = UDim.new(0, 12)
+    mc.Parent = mainBtn
 
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 40)
-    title.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
-    title.Text = "AB Test Suite V2.3"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 15
-    title.Parent = frame
+    -- Status
+    statusLbl = Instance.new("TextLabel")
+    statusLbl.Size = UDim2.new(0, 180, 0, 26)
+    statusLbl.Position = UDim2.new(0, 20, 0.32, 78)
+    statusLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    statusLbl.BackgroundTransparency = 0.3
+    statusLbl.TextColor3 = Color3.fromRGB(255, 150, 150)
+    statusLbl.Text = "Status: Idle"
+    statusLbl.TextSize = 12
+    statusLbl.Font = Enum.Font.Gotham
+    statusLbl.Parent = gui
+    local sc = Instance.new("UICorner")
+    sc.CornerRadius = UDim.new(0, 6)
+    sc.Parent = statusLbl
 
-    local tc = Instance.new("UICorner")
-    tc.CornerRadius = UDim.new(0, 12)
-    tc.Parent = title
+    -- Stats
+    statsLbl = Instance.new("TextLabel")
+    statsLbl.Size = UDim2.new(0, 180, 0, 90)
+    statsLbl.Position = UDim2.new(0, 20, 0.32, 108)
+    statsLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    statsLbl.BackgroundTransparency = 0.3
+    statsLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    statsLbl.Text = "Blocks: 0\nFaces: 0\nSkip: 0"
+    statsLbl.TextSize = 11
+    statsLbl.Font = Enum.Font.Code
+    statsLbl.TextWrapped = true
+    statsLbl.TextYAlignment = Enum.TextYAlignment.Top
+    statsLbl.TextXAlignment = Enum.TextXAlignment.Left
+    statsLbl.Parent = gui
+    local stc = Instance.new("UICorner")
+    stc.CornerRadius = UDim.new(0, 6)
+    stc.Parent = statsLbl
 
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 6)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    layout.Parent = frame
+    -- Save button
+    saveBtn = Instance.new("TextButton")
+    saveBtn.Size = UDim2.new(0, 180, 0, 38)
+    saveBtn.Position = UDim2.new(0, 20, 0.32, 202)
+    saveBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 180)
+    saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    saveBtn.Text = "Save TXT"
+    saveBtn.TextSize = 13
+    saveBtn.Font = Enum.Font.GothamBold
+    saveBtn.Parent = gui
+    local sb = Instance.new("UICorner")
+    sb.CornerRadius = UDim.new(0, 8)
+    sb.Parent = saveBtn
 
-    local padTop = Instance.new("Frame")
-    padTop.Size = UDim2.new(1, 0, 0, 45)
-    padTop.BackgroundTransparency = 1
-    padTop.LayoutOrder = 0
-    padTop.Parent = frame
+    -- Kill button
+    killBtn = Instance.new("TextButton")
+    killBtn.Size = UDim2.new(0, 180, 0, 38)
+    killBtn.Position = UDim2.new(0, 20, 0.32, 246)
+    killBtn.BackgroundColor3 = Color3.fromRGB(120, 20, 20)
+    killBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    killBtn.Text = "Kill Script"
+    killBtn.TextSize = 13
+    killBtn.Font = Enum.Font.GothamBold
+    killBtn.Parent = gui
+    local kb = Instance.new("UICorner")
+    kb.CornerRadius = UDim.new(0, 8)
+    kb.Parent = killBtn
 
-    local function makeBtn(text, color, order, onClick)
-        local b = Instance.new("TextButton")
-        b.Size = UDim2.new(1, -24, 0, 42)
-        b.BackgroundColor3 = color
-        b.TextColor3 = Color3.fromRGB(255, 255, 255)
-        b.Text = text
-        b.Font = Enum.Font.GothamMedium
-        b.TextSize = 13
-        b.LayoutOrder = order
-        b.Parent = frame
-        local bc = Instance.new("UICorner")
-        bc.CornerRadius = UDim.new(0, 8)
-        bc.Parent = b
-        b.MouseButton1Click:Connect(function()
-            b.BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), 0.3)
-            task.delay(0.15, function()
-                if b then
-                    b.BackgroundColor3 = color
-                end
-            end)
-            pcall(onClick)
-        end)
-        return b
-    end
-
-    makeBtn("1 Block Probe", Color3.fromRGB(80, 80, 120), 1, blockProbe)
-    makeBtn("2 Face Test ON/OFF", Color3.fromRGB(60, 120, 80), 2, function()
-        if faceEnabled then stopFaceTest() else startFaceTest() end
+    -- Events
+    mainBtn.MouseButton1Click:Connect(function()
+        if State.Destroyed then return end
+        if State.Enabled then stop() else start() end
     end)
-    makeBtn("3 Block Remote Test", Color3.fromRGB(120, 80, 60), 3, testBlockRemote)
-    makeBtn("4 Block Keyboard Test", Color3.fromRGB(120, 100, 60), 4, testBlockKeyboard)
-    makeBtn("5 Live Detection ON/OFF", Color3.fromRGB(80, 120, 120), 5, function()
-        if liveEnabled then stopLiveTest() else startLiveTest() end
-    end)
-    makeBtn("6 AUTO BLOCK ON/OFF", Color3.fromRGB(150, 60, 60), 6, function()
-        if abEnabled then stopAutoBlock() else startAutoBlock() end
-    end)
-    makeBtn("Save (TXT+JSON)", Color3.fromRGB(50, 100, 180), 7, saveAll)
-    makeBtn("Kill Script", Color3.fromRGB(140, 30, 30), 8, destroy)
 
-    local info = Instance.new("TextLabel")
-    info.Size = UDim2.new(1, -16, 0, 60)
-    info.BackgroundTransparency = 1
-    info.Text = "TXT:  " .. Logger.FilePath .. "\nJSON: " .. Logger.JsonPath
-    info.TextColor3 = Color3.fromRGB(180, 180, 200)
-    info.Font = Enum.Font.Gotham
-    info.TextSize = 10
-    info.TextWrapped = true
-    info.LayoutOrder = 10
-    info.Parent = frame
+    saveBtn.MouseButton1Click:Connect(function()
+        if State.Destroyed then return end
+        saveAll()
+    end)
 
-    local drag = false
+    killBtn.MouseButton1Click:Connect(function()
+        if State.Destroyed then return end
+        killBtn.Text = "Killing..."
+        task.wait(0.2)
+        destroy()
+    end)
+
+    -- Drag
+    local dragging = false
     local dragStart, startPos
-
-    title.InputBegan:Connect(function(input)
+    mainBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
            or input.UserInputType == Enum.UserInputType.Touch then
-            drag = true
+            dragging = true
             dragStart = input.Position
-            startPos = frame.Position
+            startPos = mainBtn.Position
         end
     end)
-
-    title.InputEnded:Connect(function(input)
+    mainBtn.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
            or input.UserInputType == Enum.UserInputType.Touch then
-            drag = false
+            dragging = false
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
-        if drag and (input.UserInputType == Enum.UserInputType.MouseMovement
-                     or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+                         or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            frame.Position = UDim2.new(
+            local np = UDim2.new(
                 startPos.X.Scale, startPos.X.Offset + delta.X,
                 startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            mainBtn.Position = np
+            statusLbl.Position = UDim2.new(np.X.Scale, np.X.Offset, np.Y.Scale, np.Y.Offset + 78)
+            statsLbl.Position = UDim2.new(np.X.Scale, np.X.Offset, np.Y.Scale, np.Y.Offset + 108)
+            saveBtn.Position = UDim2.new(np.X.Scale, np.X.Offset, np.Y.Scale, np.Y.Offset + 202)
+            killBtn.Position = UDim2.new(np.X.Scale, np.X.Offset, np.Y.Scale, np.Y.Offset + 246)
         end
     end)
+
+    -- Update loop
+    task.spawn(function()
+        while gui and gui.Parent and not State.Destroyed do
+            task.wait(0.3)
+            if statsLbl then
+                pcall(function()
+                    statsLbl.Text = string.format(
+                        "Blocks: %d\nFaces: %d\nSkip: %d\nLast: %s (%.0f)",
+                        State.BlockCount,
+                        State.FaceCount,
+                        State.SkipCount,
+                        State.LastEnemy,
+                        State.LastDistance)
+                end)
+            end
+        end
+    end)
+
+    updateGui()
 end
 
 buildGui()
 
-_G.ABTestSuite = {
+-- ═══════════════════════════════════════
+-- EXPORT API
+-- ═══════════════════════════════════════
+_G.ABMIN = {
+    start = start,
+    stop = stop,
     save = saveAll,
     destroy = destroy,
+    state = State,
     logger = Logger,
 }
 
-log("===============================")
-log("AB Test Suite V2.3 Loaded")
-log("TXT:  " .. Logger.FilePath)
-log("JSON: " .. Logger.JsonPath)
-log("===============================")
+print("===========================================")
+print("AB Minimal + GUI Loaded")
+print("TXT:  " .. Logger.FilePath)
+print("JSON: " .. Logger.JsonPath)
+print("===========================================")
