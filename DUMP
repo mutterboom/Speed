@@ -1,5 +1,5 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Dump Framework V3.0 | FULL STEALTH EDITION                   ║
+-- ║  Dump Framework V3.1 | FULL STEALTH EDITION (FIXED)           ║
 -- ║  By Boomxico | Delta Executor                                 ║
 -- ║  Auto-Scale | Stealth | SmartScan | Analyzer | Sniffer        ║
 -- ╚═══════════════════════════════════════════════════════════════╝
@@ -8,7 +8,7 @@
 -- ║  SECTION 1: CONFIG                        ║
 -- ╚═══════════════════════════════════════════╝
 local Config = {
-    Version = "3.0.0",
+    Version = "3.1.0",
     Author  = "Boomxico",
     OutputFolder = "BoomxicoDumps",
 
@@ -58,7 +58,6 @@ local Config = {
         StoreTags       = true,
     },
 
-    -- ★★★ STEALTH MODULE ★★★
     Stealth = {
         Enabled           = true,
         WrapAPIs          = true,
@@ -123,11 +122,87 @@ local CoreGui            = game:GetService("CoreGui")
 local RunService         = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
-
 local scriptAlive = true
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 3: UTILS                         ║
+-- ║  SECTION 3: CAPABILITIES (โหลดครั้งเดียว) ║
+-- ╚═══════════════════════════════════════════╝
+local function resolveEnv()
+    local ok, env = pcall(function()
+        if type(getfenv) == "function" then return getfenv() end
+        return _G
+    end)
+    if ok and type(env) == "table" then return env end
+    return _G
+end
+
+local ENV = resolveEnv()
+
+local function rawGetGlobal(name)
+    local v = rawget(ENV, name)
+    if v == nil then v = rawget(_G, name) end
+    return v
+end
+
+local caps = {
+    newcclosure       = type(rawGetGlobal("newcclosure")) == "function",
+    hookfunction      = type(rawGetGlobal("hookfunction")) == "function",
+    getrawmetatable   = type(rawGetGlobal("getrawmetatable")) == "function",
+    setreadonly       = type(rawGetGlobal("setreadonly")) == "function",
+    isreadonly        = type(rawGetGlobal("isreadonly")) == "function",
+    getcallingscript  = type(rawGetGlobal("getcallingscript")) == "function",
+    getgenv           = type(rawGetGlobal("getgenv")) == "function",
+    checkcaller       = type(rawGetGlobal("checkcaller")) == "function",
+    gethui            = type(rawGetGlobal("gethui")) == "function",
+    getscripts        = type(rawGetGlobal("getscripts")) == "function",
+    getconstants      = type(rawGetGlobal("getconstants")) == "function",
+    getscriptbytecode = type(rawGetGlobal("getscriptbytecode")) == "function",
+    getupvalues       = type(rawGetGlobal("getupvalues")) == "function",
+    decompile         = type(rawGetGlobal("decompile")) == "function",
+    writefile         = type(rawGetGlobal("writefile")) == "function",
+    write_file        = type(rawGetGlobal("write_file")) == "function",
+    isfolder          = type(rawGetGlobal("isfolder")) == "function",
+    makefolder        = type(rawGetGlobal("makefolder")) == "function",
+    identifyexecutor  = type(rawGetGlobal("identifyexecutor")) == "function",
+    getnamecallmethod = type(rawGetGlobal("getnamecallmethod")) == "function",
+    debug_getinfo     = debug and type(debug.getinfo) == "function",
+}
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 4: FILE API (fallback ปลอดภัย)   ║
+-- ╚═══════════════════════════════════════════╝
+local FileAPI = {}
+
+function FileAPI.exists(path)
+    if caps.isfolder then
+        local ok, r = pcall(rawGetGlobal("isfolder"), path)
+        if ok then return r end
+    end
+    if type(rawGetGlobal("isfile")) == "function" then
+        local ok, r = pcall(rawGetGlobal("isfile"), path)
+        if ok then return r end
+    end
+    return false
+end
+
+function FileAPI.mkdir(path)
+    if not caps.makefolder then return false end
+    if FileAPI.exists(path) then return true end
+    local ok = pcall(rawGetGlobal("makefolder"), path)
+    return ok
+end
+
+function FileAPI.write(path, data)
+    if caps.writefile then
+        return pcall(rawGetGlobal("writefile"), path, data)
+    elseif caps.write_file then
+        return pcall(rawGetGlobal("write_file"), path, data)
+    end
+    return false, "no writefile/write_file available"
+end
+
+-- ╔═══════════════════════════════════════════╗
+-- ║  SECTION 5: UTILS                         ║
 -- ╚═══════════════════════════════════════════╝
 local Utils = {}
 
@@ -219,73 +294,25 @@ function Utils.printSummary(tbl, title)
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 4: STEALTH MODULE                ║
+-- ║  SECTION 6: STEALTH MODULE                ║
 -- ╚═══════════════════════════════════════════╝
 local Stealth = {}
 Stealth.Originals = {}
 Stealth.Threats = {}
 
--- ─── Detect capabilities ───
-function Stealth.detect()
-    return {
-        newcclosure      = type(newcclosure) == "function",
-        hookfunction     = type(hookfunction) == "function",
-        getrawmetatable  = type(getrawmetatable) == "function",
-        setreadonly      = type(setreadonly) == "function",
-        isreadonly       = type(isreadonly) == "function",
-        getcallingscript = type(getcallingscript) == "function",
-        getgenv          = type(getgenv) == "function",
-        checkcaller      = type(checkcaller) == "function",
-        gethui           = type(gethui) == "function",
-        getscripts       = type(getscripts) == "function",
-        getconstants     = type(getconstants) == "function",
-        getscriptbytecode= type(getscriptbytecode) == "function",
-        getupvalues      = type(getupvalues) == "function",
-        decompile        = type(decompile) == "function",
-        debug_getconstants = debug and type(debug.getconstants) == "function",
-        debug_getinfo    = debug and type(debug.getinfo) == "function",
-        writefile        = type(writefile) == "function",
-        isfolder         = type(isfolder) == "function",
-        makefolder       = type(makefolder) == "function",
-        identifyexecutor = type(identifyexecutor) == "function",
-    }
-end
-
-local caps = Stealth.detect()
-
--- ─── Wrap ───
 function Stealth.wrap(fn)
     if not caps.newcclosure then return fn end
-    local ok, wrapped = pcall(newcclosure, fn)
+    local ok, wrapped = pcall(rawGetGlobal("newcclosure"), fn)
     if ok and wrapped then return wrapped end
     return fn
 end
 
--- ─── Safe call ───
-function Stealth.safeCall(name, fn, ...)
-    if not Stealth.Originals[name] then
-        Stealth.Originals[name] = fn
-    end
-    local target = Stealth.Originals[name]
-    local wrapped = Stealth.wrap(target)
-    local ok, r = pcall(wrapped, ...)
-    if not ok then
-        if not Config.Stealth.SuppressErrors then
-            Utils.warn("[Stealth] " .. name .. " err: " .. tostring(r))
-        end
-        return nil
-    end
-    return r
-end
-
--- ─── Quiet (silent) ───
 function Stealth.quiet(fn, ...)
     local ok, r = pcall(fn, ...)
     if not ok then return nil end
     return r
 end
 
--- ─── Delay ───
 function Stealth.delay(base)
     if not Config.Stealth.RandomizeDelay then
         task.wait(base or 0); return
@@ -295,7 +322,6 @@ function Stealth.delay(base)
     task.wait((base or 0) + jitter)
 end
 
--- ─── Random name ───
 function Stealth.randomName(prefix)
     prefix = prefix or "X"
     local chars = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -308,41 +334,35 @@ function Stealth.randomName(prefix)
     return prefix .. "_" .. table.concat(out)
 end
 
--- ─── Safe GUI parenting ───
 function Stealth.parentGui(gui)
     if not Config.Stealth.HideFromPlayerGui then
         gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
         return
     end
 
-    -- ลอง gethui ก่อน
     if caps.gethui then
-        local ok, hui = pcall(gethui)
+        local ok, hui = pcall(rawGetGlobal("gethui"))
         if ok and hui then
             local parented = pcall(function() gui.Parent = hui end)
             if parented then return end
         end
     end
 
-    -- ลอง CoreGui
     local ok = pcall(function() gui.Parent = CoreGui end)
     if ok then return end
 
-    -- สุดท้าย PlayerGui + random name
     if Config.Stealth.RandomizeNames then
         gui.Name = Stealth.randomName("Svc")
     end
     gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
--- ─── Hook detection ───
 function Stealth.detectHooks()
     local threats = {}
     if not Config.Stealth.DetectHooks then return threats end
     if not caps.getrawmetatable then return threats end
 
-    -- เช็ค game metatable
-    local ok, mt = pcall(getrawmetatable, game)
+    local ok, mt = pcall(rawGetGlobal("getrawmetatable"), game)
     if ok and mt and mt.__namecall then
         local isNative = false
         pcall(function()
@@ -356,14 +376,12 @@ function Stealth.detectHooks()
         end
     end
 
-    -- เช็คฟังก์ชันสำคัญ
     local apis = {
         "getscripts","getconstants","decompile","warn","print",
         "getscriptbytecode","getupvalues",
     }
     for _, name in ipairs(apis) do
-        local fn = rawget(getfenv and getfenv() or _G, name)
-            or rawget(_G, name)
+        local fn = rawGetGlobal(name)
         if type(fn) == "function" and caps.debug_getinfo then
             local info = Stealth.quiet(debug.getinfo, fn)
             if info and info.source and info.source ~= "=[C]" then
@@ -377,43 +395,36 @@ function Stealth.detectHooks()
     return threats
 end
 
--- ─── Caller spoof wrapper ───
 function Stealth.spoofCaller(fn)
     if not Config.Stealth.SpoofCaller then return fn end
     if not caps.newcclosure then return fn end
+    if type(rawGetGlobal("setthreadidentity")) ~= "function" then return fn end
+    local setIdent = rawGetGlobal("setthreadidentity")
     return Stealth.wrap(function(...)
-        if type(setthreadidentity) == "function" then
-            pcall(setthreadidentity, 2)
-        end
+        pcall(setIdent, 2)
         local r = fn(...)
-        if type(setthreadidentity) == "function" then
-            pcall(setthreadidentity, 8)
-        end
+        pcall(setIdent, 8)
         return r
     end)
 end
 
--- ─── Stealth init ───
 function Stealth.init()
     if not Config.Stealth.Enabled then
         Utils.log("Stealth: ปิด (ใช้โหมดปกติ)")
         return
     end
-    Utils.log("🛡️ เริ่มระบบ Stealth...")
+    Utils.log("🛡️  เริ่มระบบ Stealth...")
 
-    -- โหลด original APIs
     for _, name in ipairs({
         "getscripts","getconstants","getscriptbytecode",
         "getupvalues","decompile","warn","print",
     }) do
-        local fn = rawget(getfenv and getfenv() or _G, name)
-            or rawget(_G, name)
+        local fn = rawGetGlobal(name)
         if type(fn) == "function" then
             Stealth.Originals[name] = fn
         end
     end
 
-    -- ตรวจ hook
     local threats = Stealth.detectHooks()
     if #threats > 0 then
         Utils.warn("ตรวจพบ hook " .. #threats .. " จุด:")
@@ -424,7 +435,6 @@ function Stealth.init()
         Utils.ok("ไม่พบ hook ที่น่าสงสัย")
     end
 
-    -- หน่วงเริ่มต้น
     if Config.Stealth.RandomStartDelay then
         local d = 0.3 + math.random() * 0.7
         Utils.log(string.format("รอเริ่ม %.2f วิ...", d))
@@ -433,15 +443,13 @@ function Stealth.init()
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 5: FILTER                        ║
+-- ║  SECTION 7: FILTER                        ║
 -- ╚═══════════════════════════════════════════╝
 local Filter = {}
 Filter.__index = Filter
 
 function Filter.new(cfg)
-    local self = setmetatable({}, Filter)
-    self.cfg = cfg
-    return self
+    return setmetatable({ cfg = cfg }, Filter)
 end
 
 function Filter:shouldKeep(obj)
@@ -476,7 +484,7 @@ function Filter:shouldKeep(obj)
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 6: EXTRACTOR                     ║
+-- ║  SECTION 8: EXTRACTOR                     ║
 -- ╚═══════════════════════════════════════════╝
 local Extractor = {}
 Extractor.__index = Extractor
@@ -486,7 +494,13 @@ function Extractor.new(config)
     self.cfg = config
     self.filter = Filter.new(config.Filter)
     self.count = 0
+    self.aborted = false
     return self
+end
+
+function Extractor:reset()
+    self.count = 0
+    self.aborted = false
 end
 
 function Extractor:getProperties(obj)
@@ -494,11 +508,7 @@ function Extractor:getProperties(obj)
     local props = { ClassName = obj.ClassName, Name = obj.Name }
 
     if cfg.Options.StoreFullPath then
-        if Config.Stealth.Enabled then
-            props._path = Stealth.quiet(function() return obj:GetFullName() end) or "?"
-        else
-            props._path = Utils.safe(function() return obj:GetFullName() end) or "?"
-        end
+        props._path = Stealth.quiet(function() return obj:GetFullName() end) or "?"
     end
 
     local attrs = Utils.getAttributes(obj)
@@ -607,10 +617,14 @@ function Extractor:dumpContainer(container)
     local cfg = self.cfg
     local result = {}
     local processed = 0
+    local maxObj = cfg.Limits.MaxObjects
+    local maxDepth = cfg.Limits.MaxDepth
+    local chunkSize = Config.Stealth.Enabled and Config.Stealth.ChunkSize or 0
+    local chunkDelay = Config.Stealth.ChunkDelay
 
     local function recurse(obj, depth)
-        if depth > cfg.Limits.MaxDepth then return end
-        if self.count >= cfg.Limits.MaxObjects then return end
+        if depth > maxDepth then return end
+        if self.count >= maxObj then self.aborted = true; return end
 
         local props = self:getProperties(obj)
         if self.filter:shouldKeep(obj) then
@@ -620,17 +634,18 @@ function Extractor:dumpContainer(container)
         end
 
         processed = processed + 1
-        if Config.Stealth.Enabled
-           and processed % Config.Stealth.ChunkSize == 0 then
-            Stealth.delay(Config.Stealth.ChunkDelay)
+        if chunkSize > 0 and processed % chunkSize == 0 then
+            Stealth.delay(chunkDelay)
         end
 
         for _, child in ipairs(obj:GetChildren()) do
+            if self.count >= maxObj then self.aborted = true; return end
             recurse(child, depth + 1)
         end
     end
 
     for _, child in ipairs(container:GetChildren()) do
+        if self.count >= maxObj then self.aborted = true; break end
         recurse(child, 1)
     end
     return result, self.count
@@ -663,7 +678,7 @@ function Extractor:buildTree(container, maxDepth)
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 7: SERIALIZER                    ║
+-- ║  SECTION 9: SERIALIZER                    ║
 -- ╚═══════════════════════════════════════════╝
 local Serializer = {}
 Serializer.__index = Serializer
@@ -686,22 +701,23 @@ function Serializer:encode(tbl)
     return json
 end
 
+function Serializer:ensureFolder()
+    local folder = self.cfg.OutputFolder
+    FileAPI.mkdir(folder)
+end
+
 function Serializer:save(name, tbl)
     local cfg = self.cfg
     local json = self:encode(tbl)
     if not json then return false end
 
-    Utils.safe(function()
-        if caps.isfolder and not isfolder(cfg.OutputFolder) then
-            makefolder(cfg.OutputFolder)
-        end
-    end)
+    self:ensureFolder()
 
     local ts = Utils.makeTimestamp()
     local fileName = string.format("%s/%s_%s_%s.json",
         cfg.OutputFolder, name, tostring(game.PlaceId), ts)
 
-    local ok, err = Utils.safe(writefile, fileName, json)
+    local ok, err = FileAPI.write(fileName, json)
     if ok then
         local kb = math.floor(#json / 1024)
         Utils.ok(string.format("%-26s → %d KB", name, kb))
@@ -709,7 +725,6 @@ function Serializer:save(name, tbl)
             name = name, file = fileName, size_kb = kb,
             count = type(tbl) == "table" and #tbl or 0,
         })
-        Stealth.delay(0)
         return true
     else
         Utils.warn("writefile " .. name .. ": " .. tostring(err))
@@ -719,6 +734,7 @@ end
 
 function Serializer:saveIndex()
     local cfg = self.cfg
+    self:ensureFolder()
     local ts = Utils.makeTimestamp()
     local file = string.format("%s/_INDEX_%s_%s.json",
         cfg.OutputFolder, tostring(game.PlaceId), ts)
@@ -731,26 +747,30 @@ function Serializer:saveIndex()
         Files = self.index,
     })
     if json then
-        Utils.safe(writefile, file, json)
+        FileAPI.write(file, json)
         Utils.ok("Index: " .. file)
     end
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 8: COLLECTORS                    ║
+-- ║  SECTION 10: COLLECTORS                   ║
 -- ╚═══════════════════════════════════════════╝
 
 local function collectInfo()
     local name = Utils.safe(function()
         return MarketplaceService:GetProductInfo(game.PlaceId).Name
     end) or "Unknown"
+    local exec = "Unknown"
+    if caps.identifyexecutor then
+        exec = Utils.safe(rawGetGlobal("identifyexecutor")) or "Unknown"
+    end
     return {
         GameName = name,
         PlaceId = game.PlaceId,
         JobId = game.JobId,
         DumpTime = os.date("%Y-%m-%d %H:%M:%S"),
         ScriptVersion = Config.Version,
-        Executor = (caps.identifyexecutor and identifyexecutor()) or "Unknown",
+        Executor = exec,
         PlayerCount = #Players:GetPlayers(),
         MaxPlayers = Players.MaxPlayers,
         IsStudio = RunService:IsStudio(),
@@ -852,15 +872,18 @@ local function collectSounds()
     local seen = {}
     local function scan(parent, source)
         for _, s in ipairs(parent:GetDescendants()) do
-            if s:IsA("Sound") and not seen[s] then
-                seen[s] = true
-                table.insert(result, {
-                    Name = s.Name, Class = s.ClassName,
-                    SoundId = s.SoundId, Volume = s.Volume,
-                    Looped = s.Looped, Playing = s.Playing,
-                    Path = Stealth.quiet(function() return s:GetFullName() end),
-                    Source = source,
-                })
+            if s:IsA("Sound") then
+                local key = tostring(s)
+                if not seen[key] then
+                    seen[key] = true
+                    table.insert(result, {
+                        Name = s.Name, Class = s.ClassName,
+                        SoundId = s.SoundId, Volume = s.Volume,
+                        Looped = s.Looped, Playing = s.Playing,
+                        Path = Stealth.quiet(function() return s:GetFullName() end),
+                        Source = source,
+                    })
+                end
             end
         end
     end
@@ -884,7 +907,7 @@ local function collectTerrainInfo()
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 9: SMART SCAN                    ║
+-- ║  SECTION 11: SMART SCAN                   ║
 -- ╚═══════════════════════════════════════════╝
 local SmartScan = {}
 
@@ -899,27 +922,29 @@ function SmartScan.scan()
     Utils.log("🔍 สแกน Workspace...")
     local wsList = workspace:GetDescendants()
     local processed = 0
+    local chunkSize = Config.Stealth.Enabled and Config.Stealth.ChunkSize or 0
+    local chunkDelay = Config.Stealth.ChunkDelay
 
     for _, obj in ipairs(wsList) do
         processed = processed + 1
-        if Config.Stealth.Enabled
-           and processed % Config.Stealth.ChunkSize == 0 then
-            Stealth.delay(Config.Stealth.ChunkDelay)
+        if chunkSize > 0 and processed % chunkSize == 0 then
+            Stealth.delay(chunkDelay)
         end
 
         if obj:IsA("BasePart") or obj:IsA("Model") then
-            local pos = obj:IsA("BasePart")
-                and Utils.formatVector(obj.Position) or nil
-            local path = Stealth.quiet(function() return obj:GetFullName() end)
+            local pos, posRaw
+            if obj:IsA("BasePart") then
+                pos = Utils.formatVector(obj.Position)
+                posRaw = Utils.formatPosition(obj.Position)
+            end
 
             local ok, tag = Utils.matchPattern(obj.Name, cfg.CollectiblePatterns)
             if ok then
                 table.insert(found.Collectibles, {
                     Name = obj.Name, Class = obj.ClassName,
-                    Position = pos,
-                    PositionRaw = obj:IsA("BasePart")
-                        and Utils.formatPosition(obj.Position) or nil,
-                    Path = path, Tag = tag,
+                    Position = pos, PositionRaw = posRaw,
+                    Path = Stealth.quiet(function() return obj:GetFullName() end),
+                    Tag = tag,
                 })
             end
 
@@ -927,10 +952,9 @@ function SmartScan.scan()
             if ok then
                 table.insert(found.Enemies, {
                     Name = obj.Name, Class = obj.ClassName,
-                    Position = pos,
-                    PositionRaw = obj:IsA("BasePart")
-                        and Utils.formatPosition(obj.Position) or nil,
-                    Path = path, Tag = tag,
+                    Position = pos, PositionRaw = posRaw,
+                    Path = Stealth.quiet(function() return obj:GetFullName() end),
+                    Tag = tag,
                 })
             end
 
@@ -938,14 +962,18 @@ function SmartScan.scan()
             if ok then
                 table.insert(found.Portals, {
                     Name = obj.Name, Class = obj.ClassName,
-                    Position = pos, Path = path, Tag = tag,
+                    Position = pos,
+                    Path = Stealth.quiet(function() return obj:GetFullName() end),
+                    Tag = tag,
                 })
             end
 
             ok, tag = Utils.matchPattern(obj.Name, cfg.SpawnPatterns)
             if ok then
                 table.insert(found.Spawns, {
-                    Name = obj.Name, Position = pos, Path = path, Tag = tag,
+                    Name = obj.Name, Position = pos,
+                    Path = Stealth.quiet(function() return obj:GetFullName() end),
+                    Tag = tag,
                 })
             end
 
@@ -956,7 +984,8 @@ function SmartScan.scan()
                     table.insert(found.Hitboxes, {
                         Name = obj.Name, Position = pos,
                         Size = Utils.formatVector(obj.Size),
-                        Path = path, Tag = tag,
+                        Path = Stealth.quiet(function() return obj:GetFullName() end),
+                        Tag = tag,
                     })
                 end
             end
@@ -965,7 +994,8 @@ function SmartScan.scan()
             if ok then
                 table.insert(found.AntiCheatSuspects, {
                     Name = obj.Name, Class = obj.ClassName,
-                    Path = path, Sign = tag,
+                    Path = Stealth.quiet(function() return obj:GetFullName() end),
+                    Sign = tag,
                 })
             end
         end
@@ -973,8 +1003,9 @@ function SmartScan.scan()
 
     Utils.log("🔍 สแกน ReplicatedStorage...")
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")
-           or obj:IsA("BindableEvent") or obj:IsA("BindableFunction") then
+        local isRemote = obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")
+            or obj:IsA("BindableEvent") or obj:IsA("BindableFunction")
+        if isRemote then
             local ok, tag = Utils.matchPattern(obj.Name, cfg.RemotePatterns)
             table.insert(found.Remotes, {
                 Name = obj.Name, Class = obj.ClassName,
@@ -992,7 +1023,6 @@ function SmartScan.scan()
         end
     end
 
-    -- PlayerGui remotes
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     if pg then
         for _, obj in ipairs(pg:GetDescendants()) do
@@ -1012,31 +1042,40 @@ function SmartScan.scan()
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 10: REMOTE SNIFFER               ║
+-- ║  SECTION 12: REMOTE SNIFFER               ║
 -- ╚═══════════════════════════════════════════╝
 local Sniffer = {
     Log = {},
     Running = false,
     Hooked = false,
+    Originals = nil,
 }
 
 function Sniffer.start()
     if Sniffer.Hooked then return end
     if not caps.getrawmetatable or not caps.setreadonly then
-        Utils.warn("Sniffer: ไม่มี getrawmetatable")
+        Utils.warn("Sniffer: ไม่มี getrawmetatable/setreadonly")
+        return
+    end
+    if not caps.getnamecallmethod then
+        Utils.warn("Sniffer: ไม่มี getnamecallmethod — ข้ามการ hook")
         return
     end
 
-    local mt = getrawmetatable(game)
+    local getRawMT    = rawGetGlobal("getrawmetatable")
+    local setRO       = rawGetGlobal("setreadonly")
+    local getNameCall = rawGetGlobal("getnamecallmethod")
+
+    local mt = getRawMT(game)
     if not mt then return end
 
     local oldNamecall = mt.__namecall
     Sniffer.Originals = oldNamecall
 
-    setreadonly(mt, false)
+    setRO(mt, false)
     mt.__namecall = Stealth.wrap(function(self, ...)
-        local method = getnamecallmethod and getnamecallmethod()
-        if (method == "FireServer" or method == "InvokeServer")
+        local method = getNameCall()
+        if method and (method == "FireServer" or method == "InvokeServer")
            and typeof(self) == "Instance"
            and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
             local args = {...}
@@ -1063,7 +1102,7 @@ function Sniffer.start()
         end
         return oldNamecall(self, ...)
     end)
-    setreadonly(mt, true)
+    setRO(mt, true)
 
     Sniffer.Hooked = true
     Sniffer.Running = true
@@ -1083,12 +1122,13 @@ function Sniffer.getSummary()
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 11: HITBOX TRACKER               ║
+-- ║  SECTION 13: HITBOX TRACKER               ║
 -- ╚═══════════════════════════════════════════╝
 local HitboxTracker = {
     Events = {},
     Watching = {},
     Running = false,
+    TagKey = "_BoomxicoHT_" .. tostring(math.random(100000, 999999)),
 }
 
 function HitboxTracker:watch(names)
@@ -1098,14 +1138,15 @@ end
 function HitboxTracker:start()
     if self.Running then return end
     self.Running = true
+    local tagKey = self.TagKey
 
     task.spawn(function()
         while self.Running and scriptAlive do
             for _, obj in ipairs(workspace:GetDescendants()) do
                 if obj:IsA("BasePart")
                    and self.Watching[obj.Name]
-                   and not obj:GetAttribute("_ht") then
-                    obj:SetAttribute("_ht", true)
+                   and not obj:GetAttribute(tagKey) then
+                    obj:SetAttribute(tagKey, true)
                     local spawn = tick()
                     table.insert(self.Events, {
                         Name = obj.Name,
@@ -1158,7 +1199,7 @@ function HitboxTracker:getStats()
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 12: ANALYZER                     ║
+-- ║  SECTION 14: ANALYZER                     ║
 -- ╚═══════════════════════════════════════════╝
 local Analyzer = {}
 
@@ -1231,7 +1272,7 @@ function Analyzer.analyze(dump, extra)
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 13: MAIN                         ║
+-- ║  SECTION 15: MAIN                         ║
 -- ╚═══════════════════════════════════════════╝
 
 local startTime = tick()
@@ -1240,7 +1281,6 @@ Utils.log("═══════════════════════
 Utils.log("Dump Framework V" .. Config.Version .. " | by " .. Config.Author)
 Utils.log("═══════════════════════════════════════")
 
--- Stealth init
 Stealth.init()
 
 local extractor = Extractor.new(Config)
@@ -1281,7 +1321,7 @@ end
 -- 04) WORKSPACE
 if Config.Targets.Workspace then
     Utils.log("Dumping Workspace...")
-    extractor.count = 0
+    extractor:reset()
     local wsData, wsCount = extractor:dumpContainer(workspace)
     serializer:save("04_workspace", wsData)
     summary["Workspace"] = wsCount
@@ -1297,7 +1337,7 @@ end
 -- 06) REPLICATEDSTORAGE
 if Config.Targets.ReplicatedStorage then
     Utils.log("Dumping ReplicatedStorage...")
-    extractor.count = 0
+    extractor:reset()
     local rsData, rsCount = extractor:dumpContainer(ReplicatedStorage)
     serializer:save("06_replicatedstorage", rsData)
     summary["ReplicatedStorage"] = rsCount
@@ -1305,7 +1345,7 @@ end
 
 -- 07) LIGHTING
 if Config.Targets.Lighting then
-    extractor.count = 0
+    extractor:reset()
     local liData, liCount = extractor:dumpContainer(Lighting)
     serializer:save("07_lighting", liData)
     summary["Lighting"] = liCount
@@ -1364,7 +1404,6 @@ end
 -- 18) REMOTE SNIFFER
 if Config.Targets.RemoteSniffer then
     Sniffer.start()
-    -- ปล่อยให้ sniffer ทำงานสักพัก
     Utils.log("รอ Sniffer เก็บข้อมูล 5 วิ...")
     task.wait(5)
 end
@@ -1380,6 +1419,8 @@ if Config.Targets.HitboxTracker and smartData then
         HitboxTracker:start()
         Utils.log("รอ Hitbox Tracker เก็บข้อมูล 5 วิ...")
         task.wait(5)
+    else
+        Utils.log("Hitbox Tracker: ไม่มี hitbox ให้ติดตาม")
     end
 end
 
@@ -1423,9 +1464,12 @@ local elapsed = tick() - startTime
 summary["Total Time (s)"] = string.format("%.2f", elapsed)
 summary["Total Objects"] = extractor.count
 
-Utils.printSummary(summary, "Dump V3.0 Complete")
+Utils.printSummary(summary, "Dump V3.1 Complete")
 
 Utils.log("═══════════════════════════════════════")
 Utils.log("📂 ไฟล์ทั้งหมด: " .. Config.OutputFolder)
 Utils.log("📄 ดู _INDEX_*.json")
+if extractor.aborted then
+    Utils.warn("⚠️ Dump ถูกตัดที่ MaxObjects — เพิ่ม Limits.MaxObjects ถ้าต้องการทั้งหมด")
+end
 Utils.log("═══════════════════════════════════════")
