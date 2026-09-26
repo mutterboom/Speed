@@ -1,8 +1,8 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Stick TP V1.3 | Hotkey แก้ใหม่ + ค่าเริ่มต้นไม่มีปุ่ม          ║
--- ║  - Hotkey = nil (ต้องตั้งเองก่อน)                              ║
--- ║  - ใช้ ContextActionService → กดติดแน่นอน                      ║
--- ║  - Debounce กันกดซ้ำ                                            ║
+-- ║  Stick TP V1.4 | Hotkey Fix + Aim Lock Fix                     ║
+-- ║  - ล้าง hotkey เก่าของ executor ก่อน                          ║
+-- ║  - Aim Lock ใช้ Raycast + Mouse.Target (fallback)             ║
+-- ║  - เปลี่ยนปุ่มได้แน่นอน                                         ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 
 local Players = game:GetService("Players")
@@ -48,6 +48,19 @@ else
     }
 end
 
+-- ★★★ ล้าง hotkey เก่าที่ Delta/executor ผูกไว้ ★★★
+local HOTKEY_ACTION = "StickTP_Hotkey_v14"
+pcall(function()
+    -- ล้างของเก่า
+    for _, name in ipairs({
+        "StickTP_Hotkey",
+        "StickTP_Hotkey_v13",
+        HOTKEY_ACTION,
+    }) do
+        pcall(function() CAS:UnbindAction(name) end)
+    end
+end)
+
 -- ═══ CONFIG ═══
 local CFG = {
     Enabled = false,
@@ -55,7 +68,7 @@ local CFG = {
     YOffset = 0,
     UpdateRate = 0,
     TargetName = nil,
-    Hotkey = nil,                 -- ★ ค่าเริ่มต้น = ไม่มีปุ่ม
+    Hotkey = nil,                 -- ★ ไม่มีค่าเริ่มต้น
     Mode = "list",
 }
 
@@ -66,7 +79,9 @@ local State = {
     Connection = nil,
     LoopThread = nil,
     Collapsed = false,
-    LastHotkeyTime = 0,           -- ★ debounce
+    LastHotkeyTime = 0,
+    LastAimTarget = nil,          -- ★ เก็บเป้าล่าสุดที่ aim
+    LastAimTime = 0,
 }
 
 -- ═══ CLEANUP ═══
@@ -86,19 +101,76 @@ local function getHRP(plr)
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+-- ★★★ Aim Lock แบบใหม่ — หลายวิธี fallback ★★★
 local function getPlayerFromAim()
-    if not DEVICE.IsPC then return nil end
+    -- วิธี 1: ใช้ Camera:ViewportPointToRay() + Mouse
     local mouse = LP:GetMouse()
-    if not mouse or not mouse.Target then return nil end
-
-    local part = mouse.Target
-    local model = part:FindFirstAncestorOfClass("Model")
-    while model do
-        local plr = Players:GetPlayerFromCharacter(model)
-        if plr and plr ~= LP then return plr end
-        model = model:FindFirstAncestorOfClass("Model")
+    if mouse and mouse.Target then
+        local part = mouse.Target
+        local model = part:FindFirstAncestorOfClass("Model")
+        while model do
+            local plr = Players:GetPlayerFromCharacter(model)
+            if plr and plr ~= LP then return plr end
+            model = model:FindFirstAncestorOfClass("Model")
+        end
     end
+
+    -- วิธี 2: Raycast จาก Camera ผ่าน Mouse.Hit
+    if mouse and mouse.Hit then
+        local origin = Camera.CFrame.Position
+        local direction = (mouse.Hit.Position - origin)
+        if direction.Magnitude > 0.1 then
+            direction = direction.Unit * 500
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = {LP.Character, Camera}
+            params.IgnoreWater = true
+            
+            local result = workspace:Raycast(origin, direction, params)
+            if result and result.Instance then
+                local model = result.Instance:FindFirstAncestorOfClass("Model")
+                while model do
+                    local plr = Players:GetPlayerFromCharacter(model)
+                    if plr and plr ~= LP then return plr end
+                    model = model:FindFirstAncestorOfClass("Model")
+                end
+            end
+        end
+    end
+
     return nil
+end
+
+-- ★ หา player ใกล้สุด "ในกรวยสายตา" (fallback)
+local function getPlayerInSight()
+    local myHRP = getHRP(LP)
+    if not myHRP then return nil end
+    
+    local camPos = Camera.CFrame.Position
+    local camLook = Camera.CFrame.LookVector
+    
+    local best, bestScore = nil, -1
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP then
+            local hrp = getHRP(plr)
+            if hrp then
+                local toTarget = (hrp.Position - camPos)
+                local dist = toTarget.Magnitude
+                if dist > 0 then
+                    local dot = camLook:Dot(toTarget.Unit)
+                    -- อยู่ในกรวย ±45° และระยะ 200 studs
+                    if dot > 0.7 and dist < 200 then
+                        local score = dot * (1 / dist)
+                        if score > bestScore then
+                            bestScore = score
+                            best = plr
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
 end
 
 local function getNearestPlayer()
@@ -153,7 +225,9 @@ local function stickLoop()
 
     if not State.Target or not getHRP(State.Target) then
         if CFG.Mode == "aim" then
-            State.Target = getPlayerFromAim() or getNearestPlayer()
+            State.Target = getPlayerFromAim()
+                or getPlayerInSight()
+                or getNearestPlayer()
         else
             State.Target = CFG.TargetName
                 and Players:FindFirstChild(CFG.TargetName)
@@ -228,10 +302,7 @@ local function shutdown()
         State.LoopThread = nil
     end
 
-    -- ลบ hotkey binding
-    pcall(function()
-        CAS:UnbindAction("StickTP_Hotkey")
-    end)
+    pcall(function() CAS:UnbindAction(HOTKEY_ACTION) end)
 
     if GUI and GUI.sg then
         pcall(function()
@@ -274,7 +345,7 @@ local function makeGUI()
         local sizes = getSizes()
 
         local sg = Instance.new("ScreenGui")
-        sg.Name = "StickTPV13"
+        sg.Name = "StickTPV14"
         sg.ResetOnSpawn = false
         sg.IgnoreGuiInset = false
 
@@ -318,7 +389,7 @@ local function makeGUI()
         tl.Size = UDim2.new(1, -130, 0, UI_SCALE.TitleHeight)
         tl.Position = UDim2.new(0, 8, 0, 0)
         tl.BackgroundTransparency = 1
-        tl.Text = "🎯 Stick TP v1.3"
+        tl.Text = "🎯 Stick TP v1.4"
         tl.TextColor3 = Color3.fromRGB(170, 220, 255)
         tl.Font = Enum.Font.GothamBold
         tl.TextSize = UI_SCALE.FontSize
@@ -502,7 +573,7 @@ local function makeGUI()
         hotkeyBtn.Name = "HotkeyBtn"
         hotkeyBtn.Size = UDim2.new(1, -90, 0, rowH)
         hotkeyBtn.Position = UDim2.new(0, 10, 0, rowY)
-        hotkeyBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 60)   -- ★ สีเริ่มต้น = ยังไม่ตั้ง
+        hotkeyBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 60)
         hotkeyBtn.BorderSizePixel = 0
         hotkeyBtn.Text = "⌨️ ยังไม่ตั้ง hotkey"
         hotkeyBtn.TextColor3 = Color3.fromRGB(240, 240, 255)
@@ -555,7 +626,6 @@ local function makeGUI()
         layout.SortOrder = Enum.SortOrder.LayoutOrder
         layout.Parent = listFrame
 
-        -- ★ สร้างรายชื่อ
         local function refreshList()
             pcall(function()
                 for _, c in ipairs(listFrame:GetChildren()) do
@@ -767,7 +837,7 @@ local function toggleCollapse()
         GUI.body.Visible = true
 
         GUI.titleLabel.TextSize = UI_SCALE.FontSize
-        GUI.titleLabel.Text = "🎯 Stick TP v1.3"
+        GUI.titleLabel.Text = "🎯 Stick TP v1.4"
 
         GUI.collapseBtn.Text = "▼"
         GUI.collapseBtn.Size = UDim2.new(0, 26, 0, UI_SCALE.TitleHeight - 8)
@@ -782,7 +852,7 @@ end
 
 makeGUI()
 
--- ═══ ★★★ HOTKEY SYSTEM ใหม่ ★★★ ═══
+-- ═══ ★★★ HOTKEY SYSTEM ★★★ ═══
 local HotkeyState = { Waiting = false }
 
 local function updateHotkeyBtn()
@@ -791,20 +861,18 @@ local function updateHotkeyBtn()
             GUI.hotkeyBtn.Text = "⌨️ กดปุ่ม..."
             GUI.hotkeyBtn.BackgroundColor3 = Color3.fromRGB(160, 100, 40)
         elseif CFG.Hotkey then
-            GUI.hotkeyBtn.Text = "⌨️ Hotkey: " .. CFG.Hotkey.Name
+            GUI.hotkeyBtn.Text = "⌨️ Hotkey: " .. CFG.Hotkey.Name .. " (คลิกเปลี่ยน)"
             GUI.hotkeyBtn.BackgroundColor3 = Color3.fromRGB(60, 90, 160)
         else
-            GUI.hotkeyBtn.Text = "⌨️ ยังไม่ตั้ง hotkey"
+            GUI.hotkeyBtn.Text = "⌨️ ยังไม่ตั้ง hotkey (คลิกตั้ง)"
             GUI.hotkeyBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 60)
         end
     end
 end
 
--- ★ ฟังก์ชัน hotkey ทำงานจริง
+-- ★ ฟังก์ชันทำงานของ hotkey
 local function onHotkeyPress()
     if not State.Running then return end
-
-    -- ★ Debounce 200ms กันกดซ้ำ
     local now = tick()
     if now - State.LastHotkeyTime < 0.2 then return end
     State.LastHotkeyTime = now
@@ -818,7 +886,17 @@ local function onHotkeyPress()
         return
     end
 
+    -- ★ ลำดับ: aim → in-sight → nearest
     local aimPlr = getPlayerFromAim()
+    if not aimPlr then
+        aimPlr = getPlayerInSight()
+        if aimPlr then p2("ℹ️ ใช้ in-sight fallback") end
+    end
+    if not aimPlr then
+        aimPlr = getNearestPlayer()
+        if aimPlr then p2("ℹ️ ใช้ nearest fallback") end
+    end
+
     if aimPlr then
         CFG.Mode = "aim"
         CFG.TargetName = aimPlr.Name
@@ -829,34 +907,21 @@ local function onHotkeyPress()
         updateStatus()
         if GUI.enabled and GUI.refreshList then GUI.refreshList() end
     else
-        -- ★ ลองหา nearest
-        local nearest = getNearestPlayer()
-        if nearest then
-            CFG.Mode = "aim"
-            CFG.TargetName = nearest.Name
-            State.Target = nearest
-            startStick()
-            p2("▶️ เกาะ (nearest):", nearest.Name)
-            updateToggleBtn()
-            updateStatus()
-            if GUI.enabled and GUI.refreshList then GUI.refreshList() end
-        else
-            p2("ℹ️ ไม่พบเป้าเล็ง / ไม่มีผู้เล่นอื่น")
-        end
+        p2("❌ ไม่พบเป้า")
     end
 end
 
--- ★ ลงทะเบียน hotkey ผ่าน ContextActionService
+-- ★★★ rebind hotkey — ใช้ตัวแปร HOTKEY_ACTION เดียว ★★★
 local function rebindHotkey(newKey)
-    pcall(function()
-        CAS:UnbindAction("StickTP_Hotkey")
-    end)
+    -- ล้างของเก่า (ชื่อเดียวกัน)
+    pcall(function() CAS:UnbindAction(HOTKEY_ACTION) end)
 
     CFG.Hotkey = newKey
+
     if newKey then
-        pcall(function()
+        local ok = pcall(function()
             CAS:BindAction(
-                "StickTP_Hotkey",
+                HOTKEY_ACTION,
                 function(_, state)
                     if state == Enum.UserInputState.Begin then
                         onHotkeyPress()
@@ -867,7 +932,11 @@ local function rebindHotkey(newKey)
                 newKey
             )
         end)
-        p2("✅ ผูก hotkey:", newKey.Name)
+        if ok then
+            p2("✅ ผูก hotkey:", newKey.Name)
+        else
+            p2("❌ ผูก hotkey ไม่สำเร็จ")
+        end
     else
         p2("🗑 ลบ hotkey")
     end
@@ -882,13 +951,13 @@ local function startHotkeyWait()
     p2("⌨️ รอปุ่ม hotkey...")
 end
 
--- ★ ใช้ InputBegan เป็น "ตัวดัก" สำหรับโหมดรอปุ่ม
--- แต่ hotkey จริงใช้ CAS → กดติดแน่นอน
+-- ★★★ ตัวดักโหมดรอปุ่ม — ใช้ RenderStepped ไม่ผ่าน InputBegan ★★★
+-- เพื่อไม่ให้ game consume ปุ่ม
 UIS.InputBegan:Connect(function(input, processed)
     if not State.Running then return end
 
     if HotkeyState.Waiting then
-        -- ★ ยกเลิก
+        -- ★ Esc = ยกเลิก
         if input.KeyCode == Enum.KeyCode.Escape then
             HotkeyState.Waiting = false
             updateHotkeyBtn()
@@ -896,27 +965,21 @@ UIS.InputBegan:Connect(function(input, processed)
             return
         end
 
-        -- ★ ปุ่มพิเศษที่ไม่อนุญาต
-        local blocked = {
-            [Enum.KeyCode.Unknown] = true,
-            [Enum.KeyCode.Backspace] = true,
-        }
-        if input.KeyCode == Enum.KeyCode.Unknown then return end
-        if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-
-        -- ★ ถ้าต้องการลบ hotkey
-        if input.KeyCode == Enum.KeyCode.Backspace 
+        -- ★ Backspace/Delete = ลบ hotkey
+        if input.KeyCode == Enum.KeyCode.Backspace
             or input.KeyCode == Enum.KeyCode.Delete then
             HotkeyState.Waiting = false
             rebindHotkey(nil)
-            p2("🗑 ลบ hotkey")
             return
         end
 
-        -- ★ ตั้งปุ่มใหม่
-        HotkeyState.Waiting = false
-        rebindHotkey(input.KeyCode)
-        return
+        -- ★ รับเฉพาะ keyboard
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            if input.KeyCode ~= Enum.KeyCode.Unknown then
+                HotkeyState.Waiting = false
+                rebindHotkey(input.KeyCode)
+            end
+        end
     end
 end)
 
@@ -966,14 +1029,11 @@ end)
 
 -- ═══ START ═══
 p2("═══════════════════════════════════════════")
-p2("Stick TP v1.3")
+p2("Stick TP v1.4")
 p2("อุปกรณ์: " .. (DEVICE.IsMobile and "📱 Mobile"
     or DEVICE.IsConsole and "🎮 Console"
     or "💻 PC"))
 p2("")
-p2("⌨️ Hotkey: ยังไม่ตั้ง (กดปุ่ม Hotkey เพื่อตั้ง)")
-p2("   - ในโหมดรอปุ่ม: กดปุ่มที่ต้องการ")
-p2("   - Esc = ยกเลิก")
-p2("   - Backspace/Delete = ลบ hotkey")
-p2("👥 รายชื่อ = คลิกเกาะ / คลิกซ้ำ = หยุด")
+p2("⌨️ Hotkey: ยังไม่ตั้ง (กดปุ่มเพื่อตั้ง)")
+p2("🎯 Aim: ใช้ Mouse + Raycast + In-sight + Nearest")
 p2("═══════════════════════════════════════════")
