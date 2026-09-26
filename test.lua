@@ -1,29 +1,30 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Auto Block Test Suite V2.0                                   ║
--- ║  Deep Probe Edition                                           ║
--- ║  - Character Snapshot (attributes, parts, sounds, anims)      ║
--- ║  - Block VFX Detection                                        ║
--- ║  - Deep State Diff                                            ║
--- ║  - File Logger + Raw Dumps                                    ║
+-- ║  AB Test Suite V3.0 | Menu Edition                            ║
+-- ║  - ปุ่มเริ่ม/หยุด test                                        ║
+-- ║  - ปุ่มเซฟไฟล์                                                 ║
+-- ║  - Live status                                                 ║
+-- ║  - Manual trigger tests                                        ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
 local LP = Players.LocalPlayer
 
 -- ═══════════════════════════════════════════
--- FILE LOGGER
+-- LOGGER
 -- ═══════════════════════════════════════════
 local Logger = {
     Lines = {},
-    Enabled = true,
-    FilePath = "ABTestV2_" .. os.date("%Y%m%d_%H%M%S") .. ".txt",
-    RawDumpPath = "ABTestV2_raw_" .. os.date("%Y%m%d_%H%M%S") .. ".json",
+    Enabled = false,
+    FilePath = "ABTestV3_" .. os.date("%Y%m%d_%H%M%S") .. ".txt",
+    RawDumpPath = "ABTestV3_raw_" .. os.date("%Y%m%d_%H%M%S") .. ".json",
     RawDumps = {},
+    SessionActive = false,
 }
 
 local _writeFn = writefile or write_file
@@ -36,67 +37,30 @@ end
 
 local function _append(path, data)
     if _appendFn then return pcall(_appendFn, path, data) end
-    if _writeFn and readfile then
-        local ok, old = pcall(readfile, path)
-        return pcall(_writeFn, path, (ok and old or "") .. data)
-    end
     return false
 end
 
-local _origPrint = print
 local function log(...)
-    local args = {...}
     local parts = {}
-    for i, v in ipairs(args) do
+    for i, v in ipairs({...}) do
         parts[i] = tostring(v)
     end
     local line = table.concat(parts, " ")
-
-    _origPrint(line)
+    print("[AB V3]", line)
     table.insert(Logger.Lines, line)
-
-    if Logger.Enabled then
+    if Logger.Enabled and Logger.SessionActive then
         _append(Logger.FilePath, line .. "\n")
     end
 end
 
-local function writeHeader()
-    local h = {
-        "═══════════════════════════════════════════",
-        "  AB Test Log V2.0 — Deep Probe",
-        "  Started: " .. os.date("%Y-%m-%d %H:%M:%S"),
-        "  PlaceId: " .. tostring(game.PlaceId),
-        "  JobId:   " .. tostring(game.JobId),
-        "  Player:  " .. LP.Name,
-        "═══════════════════════════════════════════",
-        "",
-    }
-    for _, l in ipairs(h) do
-        table.insert(Logger.Lines, l)
-    end
-    _write(Logger.FilePath, table.concat(h, "\n") .. "\n")
-end
-
-writeHeader()
-
--- ═══════════════════════════════════════════
--- UTILS
--- ═══════════════════════════════════════════
 local function section(title)
     log("")
     log("════════ " .. title .. " ════════")
 end
 
-local function subSection(title)
-    log("─── " .. title .. " ───")
-end
-
-local function getMyChar()
-    local char = LP.Character
-    if not char then return nil end
-    return char
-end
-
+-- ═══════════════════════════════════════════
+-- FIND REMOTES
+-- ═══════════════════════════════════════════
 local function findRemote(path)
     local obj = ReplicatedStorage
     for _, part in ipairs(string.split(path, ".")) do
@@ -111,45 +75,36 @@ local BlockDeact = findRemote("Knit.Knit.Services.BlockService.RE.Deactivated")
 local HitRemote = findRemote("Knit.Knit.Services.HandicapService.RE.Hit")
 
 -- ═══════════════════════════════════════════
--- ★★★ DEEP SNAPSHOT ★★★
+-- STATE
+-- ═══════════════════════════════════════════
+local State = {
+    Running = false,
+    LastBlockTime = 0,
+    BlockCount = 0,
+    HitCount = 0,
+    LastTest = "-",
+    HitConn = nil,
+}
+
+-- ═══════════════════════════════════════════
+-- SNAPSHOT
 -- ═══════════════════════════════════════════
 local function takeSnapshot()
-    local snap = {
-        time = tick(),
-        timeStr = os.date("%H:%M:%S"),
-    }
+    local snap = { time = tick(), timeStr = os.date("%H:%M:%S.%3f") }
+    local char = LP.Character
+    if not char then return snap end
 
-    local char = getMyChar()
-    if not char then
-        snap.char = nil
-        return snap
-    end
-
-    -- 1. Attributes ทั้งหมด
-    snap.attributes = {}
-    local ok, attrs = pcall(function() return char:GetAttributes() end)
-    if ok and attrs then
-        for _, name in ipairs(attrs) do
-            local v = char:GetAttribute(name)
-            snap.attributes[name] = tostring(v)
-        end
-    end
-
-    -- 2. Humanoid state + properties
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then
         snap.humanoid = {
             state = tostring(hum:GetState()),
             health = hum.Health,
-            maxHealth = hum.MaxHealth,
-            walkSpeed = hum.WalkSpeed,
-            jumpPower = hum.JumpPower,
             platformStand = hum.PlatformStand,
             sit = hum.Sit,
+            walkSpeed = hum.WalkSpeed,
         }
     end
 
-    -- 3. Playing Animations (ละเอียด)
     snap.animations = {}
     if hum then
         local animator = hum:FindFirstChildOfClass("Animator")
@@ -158,66 +113,35 @@ local function takeSnapshot()
                 table.insert(snap.animations, {
                     name = t.Animation.Name,
                     id = t.Animation.AnimationId,
-                    speed = t.Speed,
                     weight = t.WeightCurrent,
-                    priority = tostring(t.Priority),
                 })
             end
         end
     end
 
-    -- 4. Parts ที่มีคำว่า "block" / "guard" / "shield"
-    snap.blockParts = {}
-    for _, obj in ipairs(char:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            local lower = obj.Name:lower()
-            if lower:find("block") or lower:find("guard")
-               or lower:find("shield") or lower:find("barrier") then
-                table.insert(snap.blockParts, {
-                    name = obj.Name,
-                    transparency = obj.Transparency,
-                    visible = obj.Transparency < 1,
-                    size = tostring(obj.Size),
-                    path = obj:GetFullName(),
-                })
-            end
-        end
-    end
-
-    -- 5. Sounds ที่กำลังเล่น
     snap.sounds = {}
     for _, obj in ipairs(char:GetDescendants()) do
         if obj:IsA("Sound") and obj.Playing then
             table.insert(snap.sounds, {
                 name = obj.Name,
                 soundId = obj.SoundId,
-                volume = obj.Volume,
             })
         end
     end
 
-    -- 6. จำนวน parts (เพื่อ detect spawn/despawn)
-    snap.partCount = 0
-    snap.visibleParts = 0
-    for _, obj in ipairs(char:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            snap.partCount = snap.partCount + 1
-            if obj.Transparency < 1 then
-                snap.visibleParts = snap.visibleParts + 1
-            end
+    snap.attributes = {}
+    local ok, attrs = pcall(function() return char:GetAttributes() end)
+    if ok and attrs then
+        for _, name in ipairs(attrs) do
+            snap.attributes[name] = tostring(char:GetAttribute(name))
         end
     end
 
     return snap
 end
 
--- ═══════════════════════════════════════════
--- SNAPSHOT DIFF
--- ═══════════════════════════════════════════
-local function diffSnapshots(before, after)
+local function diffSnap(before, after)
     local diffs = {}
-
-    -- Humanoid diff
     if before.humanoid and after.humanoid then
         for k, v in pairs(after.humanoid) do
             if before.humanoid[k] ~= v then
@@ -225,398 +149,406 @@ local function diffSnapshots(before, after)
                     k, tostring(before.humanoid[k]), tostring(v)))
             end
         end
-    elseif after.humanoid and not before.humanoid then
-        table.insert(diffs, "humanoid: nil → present")
     end
 
-    -- Attributes diff
-    local beforeAttrs = before.attributes or {}
-    local afterAttrs = after.attributes or {}
-    for k, v in pairs(afterAttrs) do
-        if beforeAttrs[k] ~= v then
-            table.insert(diffs, string.format("attr.%s: %s → %s",
-                k, tostring(beforeAttrs[k]), tostring(v)))
-        end
-    end
-    for k in pairs(beforeAttrs) do
-        if afterAttrs[k] == nil then
-            table.insert(diffs, string.format("attr.%s: %s → nil",
-                k, tostring(beforeAttrs[k])))
-        end
-    end
-
-    -- Animations diff
     local beforeAnims = {}
     for _, a in ipairs(before.animations or {}) do
-        beforeAnims[a.name] = a
+        beforeAnims[a.name .. "|" .. a.id] = a
     end
-    local afterAnims = {}
     for _, a in ipairs(after.animations or {}) do
-        afterAnims[a.name] = a
-    end
-    for name, a in pairs(afterAnims) do
-        if not beforeAnims[name] then
-            table.insert(diffs, string.format("anim+ %s (%s)",
-                name, a.id))
-        end
-    end
-    for name in pairs(beforeAnims) do
-        if not afterAnims[name] then
-            table.insert(diffs, string.format("anim- %s", name))
+        if not beforeAnims[a.name .. "|" .. a.id] then
+            table.insert(diffs, string.format("anim+ %s (%s)", a.name, a.id))
         end
     end
 
-    -- Part count diff
-    if before.partCount ~= after.partCount then
-        table.insert(diffs, string.format("partCount: %d → %d",
-            before.partCount or 0, after.partCount or 0))
-    end
-    if before.visibleParts ~= after.visibleParts then
-        table.insert(diffs, string.format("visibleParts: %d → %d",
-            before.visibleParts or 0, after.visibleParts or 0))
-    end
-
-    -- Block parts diff (สำคัญมาก!)
-    local beforeBlocks = {}
-    for _, p in ipairs(before.blockParts or {}) do
-        beforeBlocks[p.path] = p
-    end
-    for _, p in ipairs(after.blockParts or {}) do
-        local old = beforeBlocks[p.path]
-        if not old then
-            table.insert(diffs, string.format("blockPart+ %s (vis=%s, trans=%.2f)",
-                p.name, tostring(p.visible), p.transparency))
-        elseif old.visible ~= p.visible or old.transparency ~= p.transparency then
-            table.insert(diffs, string.format("blockPart~ %s (vis %s→%s, trans %.2f→%.2f)",
-                p.name, tostring(old.visible), tostring(p.visible),
-                old.transparency, p.transparency))
-        end
-    end
-
-    -- Sounds diff
     local beforeSounds = {}
     for _, s in ipairs(before.sounds or {}) do
-        beforeSounds[s.name] = s
+        beforeSounds[s.name .. "|" .. s.soundId] = s
     end
     for _, s in ipairs(after.sounds or {}) do
-        if not beforeSounds[s.name] then
-            table.insert(diffs, string.format("sound+ %s (%s)",
-                s.name, s.soundId))
+        if not beforeSounds[s.name .. "|" .. s.soundId] then
+            table.insert(diffs, string.format("sound+ %s (%s)", s.name, s.soundId))
         end
     end
 
     return diffs
 end
 
-local function printSnapshot(label, snap)
-    log(string.format("  [%s] time=%s", label, snap.timeStr or "?"))
-
+local function printSnap(label, snap)
+    log(string.format("  [%s] %s", label, snap.timeStr or "?"))
     if snap.humanoid then
-        log(string.format("    hum.state=%s | hum.platformStand=%s | hum.sit=%s",
+        log(string.format("    state=%s hp=%.0f walkSpeed=%.0f",
             snap.humanoid.state,
-            tostring(snap.humanoid.platformStand),
-            tostring(snap.humanoid.sit)))
-        log(string.format("    hum.hp=%d/%d | walkSpeed=%d",
-            math.floor(snap.humanoid.health),
-            math.floor(snap.humanoid.maxHealth),
-            math.floor(snap.humanoid.walkSpeed)))
+            snap.humanoid.health,
+            snap.humanoid.walkSpeed))
     end
-
-    -- Attributes
-    local attrList = {}
-    for k, v in pairs(snap.attributes or {}) do
-        table.insert(attrList, k .. "=" .. v)
-    end
-    if #attrList > 0 then
-        log("    attrs: " .. table.concat(attrList, ", "))
-    else
-        log("    attrs: (none)")
-    end
-
-    -- Animations
-    if #(snap.animations or {}) > 0 then
-        local names = {}
-        for _, a in ipairs(snap.animations) do
-            table.insert(names, a.name)
+    if #(snap.sounds or {}) > 0 then
+        local s = {}
+        for _, snd in ipairs(snap.sounds) do
+            table.insert(s, snd.name)
         end
-        log("    anims: [" .. table.concat(names, ", ") .. "]")
-    else
-        log("    anims: []")
+        log("    sounds: [" .. table.concat(s, ", ") .. "]")
     end
-
-    -- Block parts
-    if #(snap.blockParts or {}) > 0 then
-        for _, p in ipairs(snap.blockParts) do
-            log(string.format("    blockPart: %s vis=%s trans=%.2f",
-                p.name, tostring(p.visible), p.transparency))
-        end
-    end
-
-    -- Counts
-    log(string.format("    parts=%d visible=%d",
-        snap.partCount or 0, snap.visibleParts or 0))
-end
-
--- ═══════════════════════════════════════════
--- TEST RUNNER — Snapshot + Action + Snapshot
--- ═══════════════════════════════════════════
-local function runTest(testName, actionFn, postWaitTime)
-    postWaitTime = postWaitTime or 1.0
-
-    section(testName)
-
-    -- BEFORE
-    local before = takeSnapshot()
-    subSection("BEFORE")
-    printSnapshot("before", before)
-
-    -- ACTION
-    subSection("ACTION")
-    local actionOk, actionErr = pcall(actionFn)
-    log("  action: " .. (actionOk and "OK" or ("FAIL: " .. tostring(actionErr))))
-
-    -- ตรวจทันที
-    task.wait(0.1)
-    local snap100 = takeSnapshot()
-    subSection("AFTER 100ms")
-    printSnapshot("+100ms", snap100)
-
-    -- ตรวจต่อ
-    task.wait(0.4)
-    local snap500 = takeSnapshot()
-    subSection("AFTER 500ms")
-    printSnapshot("+500ms", snap500)
-
-    -- ตรวจสุดท้าย
-    task.wait(postWaitTime - 0.5)
-    local snapEnd = takeSnapshot()
-    subSection("AFTER " .. math.floor(postWaitTime * 1000) .. "ms")
-    printSnapshot("end", snapEnd)
-
-    -- DIFFS
-    subSection("DIFFS")
-    local diffs1 = diffSnapshots(before, snap100)
-    local diffs2 = diffSnapshots(before, snap500)
-    local diffs3 = diffSnapshots(before, snapEnd)
-
-    if #diffs1 > 0 then
-        log("  [+100ms vs before]")
-        for _, d in ipairs(diffs1) do log("    " .. d) end
-    else
-        log("  [+100ms] ไม่มีการเปลี่ยนแปลง")
-    end
-
-    if #diffs2 > 0 then
-        log("  [+500ms vs before]")
-        for _, d in ipairs(diffs2) do log("    " .. d) end
-    else
-        log("  [+500ms] ไม่มีการเปลี่ยนแปลง")
-    end
-
-    if #diffs3 > 0 then
-        log("  [end vs before]")
-        for _, d in ipairs(diffs3) do log("    " .. d) end
-    else
-        log("  [end] ไม่มีการเปลี่ยนแปลง")
-    end
-
-    -- Save raw snapshot
-    table.insert(Logger.RawDumps, {
-        test = testName,
-        before = before,
-        after100 = snap100,
-        after500 = snap500,
-        afterEnd = snapEnd,
-        diffs100 = diffs1,
-        diffs500 = diffs2,
-        diffsEnd = diffs3,
-    })
-
-    section("จบ " .. testName)
-    task.wait(0.5)
 end
 
 -- ═══════════════════════════════════════════
 -- TESTS
 -- ═══════════════════════════════════════════
-local tests = {
+local function runTest(name, actionFn, waitTime)
+    waitTime = waitTime or 1.0
+    section(name)
+    State.LastTest = name
+
+    local before = takeSnapshot()
+    log("─── BEFORE ───")
+    printSnap("before", before)
+
+    log("─── ACTION ───")
+    local ok, err = pcall(actionFn)
+    log("  action: " .. (ok and "OK" or ("FAIL: " .. tostring(err))))
+
+    task.wait(0.15)
+    local snap100 = takeSnapshot()
+    log("─── +150ms ───")
+    printSnap("+150ms", snap100)
+
+    task.wait(waitTime - 0.15)
+    local snapEnd = takeSnapshot()
+    log("─── +" .. math.floor(waitTime * 1000) .. "ms ───")
+    printSnap("end", snapEnd)
+
+    log("─── DIFFS ───")
+    local d1 = diffSnap(before, snap100)
+    if #d1 > 0 then
+        for _, d in ipairs(d1) do log("  " .. d) end
+    else
+        log("  [+150ms] ไม่เปลี่ยน")
+    end
+
+    local d2 = diffSnap(before, snapEnd)
+    if #d2 > 0 then
+        for _, d in ipairs(d2) do log("  " .. d) end
+    else
+        log("  [end] ไม่เปลี่ยน")
+    end
+
+    table.insert(Logger.RawDumps, {
+        test = name, before = before,
+        after100 = snap100, afterEnd = snapEnd,
+        diffs100 = d1, diffsEnd = d2,
+    })
+
+    section("จบ " .. name)
+    task.wait(0.5)
+end
+
+-- Test functions
+local TESTS = {
     {
-        name = "T1: Keyboard F (hold 1s)",
-        action = function()
+        name = "T1: Keyboard F hold 1s",
+        fn = function()
             VirtualInputManager:SendKeyEvent(true, "F", false, game)
             task.wait(1.0)
             VirtualInputManager:SendKeyEvent(false, "F", false, game)
         end,
+        wait = 2.0,
     },
     {
-        name = "T2: Keyboard F (tap 100ms)",
-        action = function()
-            VirtualInputManager:SendKeyEvent(true, "F", false, game)
-            task.wait(0.1)
-            VirtualInputManager:SendKeyEvent(false, "F", false, game)
+        name = "T2: Remote Activated bare",
+        fn = function()
+            if BlockRemote then BlockRemote:FireServer() end
         end,
+        wait = 2.0,
     },
     {
-        name = "T3: Remote Activated (bare)",
-        action = function()
-            if BlockRemote then
+        name = "T3: Remote Activated hold 1s",
+        fn = function()
+            if not BlockRemote then return end
+            local t0 = tick()
+            while tick() - t0 < 1 do
                 BlockRemote:FireServer()
+                task.wait(0.05)
             end
+            if BlockDeact then BlockDeact:FireServer() end
         end,
+        wait = 2.0,
     },
     {
-        name = "T4: Remote Activated(true)",
-        action = function()
-            if BlockRemote then
-                BlockRemote:FireServer(true)
-            end
-        end,
-    },
-    {
-        name = "T5: Remote Activated spam (10x)",
-        action = function()
-            if BlockRemote then
-                for i = 1, 10 do
-                    BlockRemote:FireServer()
-                    task.wait(0.05)
-                end
-            end
-        end,
-    },
-    {
-        name = "T6: Remote Activated hold (1s)",
-        action = function()
-            if BlockRemote then
-                local t0 = tick()
-                while tick() - t0 < 1 do
-                    BlockRemote:FireServer()
-                    task.wait(0.05)
-                end
-                if BlockDeact then
-                    BlockDeact:FireServer()
-                end
-            end
-        end,
-    },
-    {
-        name = "T7: Keyboard F + Remote Activated",
-        action = function()
+        name = "T4: Keyboard F + Remote (combo)",
+        fn = function()
             VirtualInputManager:SendKeyEvent(true, "F", false, game)
-            if BlockRemote then
-                BlockRemote:FireServer()
-            end
+            if BlockRemote then BlockRemote:FireServer() end
             task.wait(0.5)
             VirtualInputManager:SendKeyEvent(false, "F", false, game)
-            if BlockDeact then
-                BlockDeact:FireServer()
-            end
+            if BlockDeact then BlockDeact:FireServer() end
         end,
+        wait = 2.0,
+    },
+    {
+        name = "T5: Hold remote 3s (sustained)",
+        fn = function()
+            if not BlockRemote then return end
+            local t0 = tick()
+            while tick() - t0 < 3 do
+                BlockRemote:FireServer()
+                task.wait(0.05)
+            end
+            if BlockDeact then BlockDeact:FireServer() end
+        end,
+        wait = 4.0,
     },
 }
 
 -- ═══════════════════════════════════════════
--- LISTEN HitRemote (จับ args จริง)
+-- RUN ALL TESTS
 -- ═══════════════════════════════════════════
-local hitLog = {}
+local function runAllTests()
+    if State.Running then
+        log("⚠️ กำลังรันอยู่")
+        return
+    end
+    State.Running = true
+    Logger.Enabled = true
+    Logger.SessionActive = true
 
-if HitRemote then
+    log("")
+    log("═══════════════════════════════════════")
+    log("🚀 เริ่ม test session")
+    log("  File: " .. Logger.FilePath)
+    log("  Time: " .. os.date("%Y-%m-%d %H:%M:%S"))
+    log("═══════════════════════════════════════")
+
     task.spawn(function()
-        local ok = pcall(function()
-            HitRemote.OnClientEvent:Connect(function(...)
-                local args = {...}
-                local info = {}
-                for i, v in ipairs(args) do
-                    if typeof(v) == "Instance" then
-                        info[i] = {
-                            type = "Instance",
-                            class = v.ClassName,
-                            name = v.Name,
-                            path = v:GetFullName(),
-                        }
-                    else
-                        info[i] = { type = typeof(v), value = tostring(v) }
-                    end
-                end
-                table.insert(hitLog, {
-                    time = os.date("%H:%M:%S.%3f"),
-                    tick = tick(),
-                    args = info,
-                })
-            end)
-        end)
+        for _, test in ipairs(TESTS) do
+            if not State.Running then break end
+            runTest(test.name, test.fn, test.wait)
+        end
+
+        State.Running = false
+        log("")
+        log("═══════════════════════════════════════")
+        log("✅ Test session เสร็จ")
+        log("  Hits: " .. State.HitCount)
+        log("  Blocks: " .. State.BlockCount)
+        log("═══════════════════════════════════════")
+
+        saveSession()
+    end)
+end
+
+function saveSession()
+    -- Save text log
+    local h = {
+        "═══════════════════════════════════════════",
+        "  AB Test V3.0 Log",
+        "  Started: " .. os.date("%Y-%m-%d %H:%M:%S"),
+        "  PlaceId: " .. tostring(game.PlaceId),
+        "  Player:  " .. LP.Name,
+        "═══════════════════════════════════════════",
+        "",
+    }
+    _write(Logger.FilePath, table.concat(h, "\n") .. "\n" .. table.concat(Logger.Lines, "\n"))
+
+    -- Save raw JSON
+    local raw = HttpService:JSONEncode({
+        meta = {
+            version = "3.0",
+            time = os.date("%Y-%m-%d %H:%M:%S"),
+            placeId = game.PlaceId,
+            jobId = game.JobId,
+            player = LP.Name,
+            hits = State.HitCount,
+            blocks = State.BlockCount,
+        },
+        tests = Logger.RawDumps,
+    })
+    _write(Logger.RawDumpPath, raw)
+
+    log("💾 Save 2 files:")
+    log("   " .. Logger.FilePath)
+    log("   " .. Logger.RawDumpPath)
+end
+
+function stopSession()
+    State.Running = false
+    Logger.SessionActive = false
+    log("⛔ หยุด test")
+    saveSession()
+end
+
+-- ═══════════════════════════════════════════
+-- HIT REMOTE LISTENER
+-- ═══════════════════════════════════════════
+if HitRemote then
+    State.HitConn = HitRemote.OnClientEvent:Connect(function(attacker)
+        State.HitCount = State.HitCount + 1
+        local name = typeof(attacker) == "Instance"
+            and (attacker:IsA("Model") and attacker.Name or attacker:GetFullName())
+            or tostring(attacker)
+        if Logger.SessionActive then
+            log(string.format("⚔️ Hit #%d ← %s", State.HitCount, name))
+        end
     end)
 end
 
 -- ═══════════════════════════════════════════
--- MAIN
+-- GUI
 -- ═══════════════════════════════════════════
-task.spawn(function()
-    log("")
-    log("═══════════════════════════════════════")
-    log("✅ AB Test Suite V2.0 — Deep Probe")
-    log("📁 Log: " .. Logger.FilePath)
-    log("📁 Raw: " .. Logger.RawDumpPath)
-    log("📋 Tests: " .. #tests)
-    log("⏱️  รวมเวลา: ~" .. (#tests * 3) .. " วินาที")
-    log("═══════════════════════════════════════")
+local function buildGui()
+    local pg = LP:WaitForChild("PlayerGui")
 
-    task.wait(2)
+    local old = pg:FindFirstChild("ABTestV3")
+    if old then old:Destroy() end
 
-    -- Block remote status
-    section("REMOTE STATUS")
-    log("BlockRemote: " .. (BlockRemote and BlockRemote:GetFullName() or "❌ ไม่เจอ"))
-    log("BlockDeact: " .. (BlockDeact and BlockDeact:GetFullName() or "❌ ไม่เจอ"))
-    log("HitRemote: " .. (HitRemote and HitRemote:GetFullName() or "❌ ไม่เจอ"))
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "ABTestV3"
+    gui.ResetOnSpawn = false
+    gui.Parent = pg
 
-    -- Initial baseline
-    section("BASELINE — ก่อนเริ่ม")
-    printSnapshot("baseline", takeSnapshot())
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 260, 0, 380)
+    frame.Position = UDim2.new(0, 20, 0, 100)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    frame.BorderSizePixel = 0
+    frame.Parent = gui
 
-    task.wait(1)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = frame
 
-    -- Run all tests
-    for i, test in ipairs(tests) do
-        runTest(test.name, test.action)
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 40)
+    title.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    title.Text = "🧪 AB Test V3.0"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 14
+    title.Parent = frame
+    local tc = Instance.new("UICorner")
+    tc.CornerRadius = UDim.new(0, 12)
+    tc.Parent = title
+
+    -- Buttons layout
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 6)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = frame
+    layout.Padding = UDim.new(0, 8)
+
+    local padTop = Instance.new("Frame")
+    padTop.Size = UDim2.new(1, 0, 0, 45)
+    padTop.BackgroundTransparency = 1
+    padTop.LayoutOrder = 0
+    padTop.Parent = frame
+
+    -- Button maker
+    local function makeBtn(text, color, order, onClick)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1, -20, 0, 42)
+        b.BackgroundColor3 = color
+        b.TextColor3 = Color3.fromRGB(255, 255, 255)
+        b.Text = text
+        b.Font = Enum.Font.GothamMedium
+        b.TextSize = 13
+        b.LayoutOrder = order
+        b.Parent = frame
+        local bc = Instance.new("UICorner")
+        bc.CornerRadius = UDim.new(0, 8)
+        bc.Parent = b
+        b.MouseButton1Click:Connect(function()
+            b.BackgroundColor3 = color:Lerp(Color3.new(1,1,1), 0.3)
+            task.delay(0.15, function()
+                if b then b.BackgroundColor3 = color end
+            end)
+            pcall(onClick)
+        end)
+        return b
     end
 
-    -- Final
-    section("HIT REMOTE LOG")
-    log("รวม " .. #hitLog .. " events")
-    if #hitLog > 0 then
-        for i = 1, math.min(5, #hitLog) do
-            local e = hitLog[i]
-            log(string.format("  [%d] %s", i, e.time))
-            for j, arg in ipairs(e.args) do
-                log(string.format("      arg[%d] %s", j,
-                    arg.path or arg.value or "?"))
-            end
+    makeBtn("▶  เริ่มทดสอบทั้งหมด", Color3.fromRGB(50, 160, 50), 1, runAllTests)
+
+    makeBtn("⛔  หยุด", Color3.fromRGB(180, 50, 50), 2, stopSession)
+
+    makeBtn("💾  เซฟไฟล์", Color3.fromRGB(50, 100, 180), 3, function()
+        saveSession()
+    end)
+
+    -- Individual tests
+    local i = 4
+    for idx, test in ipairs(TESTS) do
+        makeBtn("▸ " .. test.name, Color3.fromRGB(80, 80, 120), i, function()
+            if State.Running then return end
+            Logger.Enabled = true
+            Logger.SessionActive = true
+            task.spawn(function()
+                runTest(test.name, test.fn, test.wait)
+                saveSession()
+            end)
+        end)
+        i = i + 1
+    end
+
+    -- Status label
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(1, -20, 0, 50)
+    status.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    status.TextColor3 = Color3.fromRGB(200, 200, 200)
+    status.Text = "Status: Idle"
+    status.Font = Enum.Font.Code
+    status.TextSize = 11
+    status.TextWrapped = true
+    status.LayoutOrder = 20
+    status.Parent = frame
+    local sc = Instance.new("UICorner")
+    sc.CornerRadius = UDim.new(0, 6)
+    sc.Parent = status
+
+    -- Update loop
+    task.spawn(function()
+        while gui.Parent do
+            task.wait(0.5)
+            status.Text = string.format(
+                "Status: %s\nHits: %d | Blocks: %d\nLast: %s",
+                State.Running and "🟢 Running" or "⚪ Idle",
+                State.HitCount,
+                State.BlockCount,
+                State.LastTest)
         end
-    end
+    end)
 
-    -- Save raw dumps
-    local rawJson = HttpService:JSONEncode({
-        tests = Logger.RawDumps,
-        hitLog = hitLog,
-        meta = {
-            version = "2.0",
-            placeId = game.PlaceId,
-            jobId = game.JobId,
-            player = LP.Name,
-            time = os.date("%Y-%m-%d %H:%M:%S"),
-        },
-    })
-    _write(Logger.RawDumpPath, rawJson)
+    -- Drag
+    local dragging, dragStart, startPos
+    title.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+           or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    title.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+           or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+                         or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
 
-    log("")
-    log("═══════════════════════════════════════")
-    log("  TEST COMPLETE")
-    log("  Time: " .. os.date("%Y-%m-%d %H:%M:%S"))
-    log("  Log file:  " .. Logger.FilePath)
-    log("  Raw file:  " .. Logger.RawDumpPath)
-    log("  Total lines: " .. #Logger.Lines)
-    log("═══════════════════════════════════════")
+buildGui()
 
-    _origPrint("[ABTest] ✅ เสร็จ!")
-    _origPrint("[ABTest] 📁 " .. Logger.FilePath)
-    _origPrint("[ABTest] 📁 " .. Logger.RawDumpPath)
-end)
+print("═══════════════════════════════════════════")
+print("✅ AB Test Suite V3.0 | Menu Edition")
+print("📁 Log: " .. Logger.FilePath)
+print("📁 Raw: " .. Logger.RawDumpPath)
+print("   กด ▶ เริ่มทดสอบทั้งหมด")
+print("═══════════════════════════════════════════")
