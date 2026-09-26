@@ -1,14 +1,14 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Dump Framework V3.4 | SESSION EDITION                        ║
+-- ║  Dump Framework V3.5 | UNRELIABLE EDITION                     ║
 -- ║  By Boomxico | Delta Executor                                 ║
--- ║  Session Folders | Safe | TargetedHook | Realtime Hitbox      ║
+-- ║  Fixed: UnreliableRemoteEvent | SmartHitbox | Filter          ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 1: SESSION INFO (ก่อน Config)   ║
+-- ║  SECTION 1: SESSION INFO                  ║
 -- ╚═══════════════════════════════════════════╝
 local SESSION = {
-    Version = "3.4.0",
+    Version = "3.5.0",
     StartedAt = os.date("%Y-%m-%d %H:%M:%S"),
     Timestamp = os.date("%Y%m%d_%H%M%S"),
     PlaceId = tostring(game.PlaceId),
@@ -22,13 +22,12 @@ local Config = {
     Version = SESSION.Version,
     Author  = "Boomxico",
 
-    -- ★★★ SESSION FOLDER ★★★
     BaseFolder = "BoomxicoDumps",
-    UseSessionFolder = true,          -- ★ เปิดใช้ folder แยก
-    SessionNameFormat = "V34_%s_%s",  -- V34_<placeId>_<timestamp>
-    AutoCleanupOldSessions = true,    -- ★ ลบ session เก่าอัตโนมัติ
-    CleanupKeepDays = 7,              -- ★ เก็บ 7 วันล่าสุด
-    CleanupMaxSessions = 10,          -- ★ เก็บสูงสุด 10 session
+    UseSessionFolder = true,
+    SessionNameFormat = "V35_%s_%s",
+    AutoCleanupOldSessions = true,
+    CleanupKeepDays = 7,
+    CleanupMaxSessions = 10,
 
     Wave = {
         DelayBetween = 3,
@@ -48,6 +47,7 @@ local Config = {
         SmartScan         = true,
         BlockServiceScan  = true,
         CharacterRemotes  = true,
+        UnreliableScan    = true,   -- ★ ใหม่
         TargetedHook      = true,
         HitboxWatcher     = true,
         Analysis          = true,
@@ -61,7 +61,7 @@ local Config = {
         MaxStringLen = 250,
         MaxGuiDepth  = 4,
         HookLog      = 2000,
-        HitboxLog    = 1000,
+        HitboxLog    = 3000,       -- ★ เพิ่มเพราะเก็บเยอะขึ้น
     },
 
     Filter = {
@@ -94,24 +94,58 @@ local Config = {
         SuppressErrors    = true,
     },
 
+    -- ★★ TargetedHook ปรับใหม่ ★★
     TargetedHook = {
         Patterns = {
             "Hitbox", "Activated", "Deactivated",
             "Block", "Parry", "M1", "M2",
             "Attack", "Combat", "Melee",
-            "LOOK", "Chase", "Ultimate",
+            "LOOK", "Chase", "Ultimate", "Effects",
+            "Slash", "Hit", "Damage",
         },
         RunDuration = 30,
-        HookClientEvent = true,   -- ★ hook OnClientEvent ของ Hitbox (Server→Client)
+        HookClientEvent = true,
+        -- ★ Hook ทุก type ที่เป็น remote
+        RemoteClasses = {
+            "RemoteEvent",
+            "RemoteFunction",
+            "UnreliableRemoteEvent",  -- ★ ใหม่!
+            "BindableEvent",
+            "BindableFunction",
+        },
     },
 
+    -- ★★ HitboxWatcher ปรับใหม่ ★★
     HitboxWatcher = {
         RunDuration = 30,
         PollRate    = 0.03,
-        MinTransparency = 0.5,    -- ★ ผ่อนปรนกว้าง (hitbox บางอัน transp 0.5)
-        WatchOnlyCharacters = false,  -- ★ ดูทั้ง workspace (ครอบคลุมกว่า)
-        AlsoCheckCanCollideFalse = true,  -- ★ hitbox มัก CanCollide = false
-        AlsoCheckMassless = true,         -- ★ hitbox มัก Massless = true
+        MinTransparency = 0.5,
+        WatchOnlyCharacters = false,
+        AlsoCheckCanCollideFalse = true,
+        AlsoCheckMassless = true,
+        -- ★★ ตัด body part ของตัวเอง ★★
+        IgnoreNames = {
+            -- body part
+            "Head", "Torso", "Left Arm", "Right Arm",
+            "Left Leg", "Right Leg", "UpperTorso", "LowerTorso",
+            "LeftHand", "RightHand", "LeftFoot", "RightFoot",
+            "LeftUpperArm", "RightUpperArm",
+            "LeftLowerArm", "RightLowerArm",
+            "LeftUpperLeg", "RightUpperLeg",
+            "LeftLowerLeg", "RightLowerLeg",
+            "HumanoidRootPart", "Collide", "RootJoint",
+            "Handle", "Block", "BlockEffect",
+        },
+        -- ★★ ต้องมีคำเหล่านี้เท่านั้น ★★
+        RequirePatterns = {
+            "Hitbox", "HitGlow", "SlashHit", "ChaseHit",
+            "HardHit", "RoughHit", "GrabCollision",
+            "CombatTrail", "CounterSwing", "Strike",
+        },
+        -- ★★ ตัด owner = ตัวเอง ★★
+        IgnoreSelfOwner = true,
+        -- ★★ duration ต้อง ≤ 2 วิ ★★
+        MaxValidDurationMs = 2000,
     },
 
     SmartDump = {
@@ -147,16 +181,14 @@ local Config = {
         ImportantServices = {
             "BlockService", "HitboxService", "CustomService",
             "AntiCheatService", "MovementService", "ItemService",
+            "CombatService",
         },
     },
 }
 
--- สร้างชื่อ session folder
 if Config.UseSessionFolder then
     Config.OutputFolder = string.format(
-        Config.SessionNameFormat,
-        SESSION.PlaceId,
-        SESSION.Timestamp)
+        Config.SessionNameFormat, SESSION.PlaceId, SESSION.Timestamp)
     Config.OutputFolder = Config.BaseFolder .. "/" .. Config.OutputFolder
 else
     Config.OutputFolder = Config.BaseFolder
@@ -233,7 +265,6 @@ local _isFolderFn   = findFn({"isfolder","is_folder","IsFolder"})
 local _isFileFn     = findFn({"isfile","is_file","IsFile"})
 local _makeFolderFn = findFn({"makefolder","make_folder","MakeFolder"})
 local _listFilesFn  = findFn({"listfiles","list_files","ListFiles"})
-local _delFileFn    = findFn({"delfile","del_file","DeleteFile"})
 local _delFolderFn  = findFn({"delfolder","del_folder","DeleteFolder"})
 local _clipboardFn  = findFn({"setclipboard","toclipboard"})
 
@@ -271,7 +302,6 @@ function FileAPI.mkdir(path)
     return ok
 end
 
--- mkdir แบบ recursive (สร้าง parent ให้ด้วย)
 function FileAPI.mkdirp(path)
     local parts = {}
     for part in string.gmatch(path, "[^/]+") do
@@ -279,11 +309,8 @@ function FileAPI.mkdirp(path)
     end
     local acc = ""
     for i, part in ipairs(parts) do
-        if i == 1 then
-            acc = part
-        else
-            acc = acc .. "/" .. part
-        end
+        if i == 1 then acc = part
+        else acc = acc .. "/" .. part end
         FileAPI.mkdir(acc)
     end
     return true
@@ -295,17 +322,12 @@ function FileAPI.write(path, data)
         return true
     end
     local ok, err = pcall(_writeFn, path, data)
-    if not ok then
-        MEMORY_STORE[path] = data
-    end
+    if not ok then MEMORY_STORE[path] = data end
     return ok, err
 end
 
 function FileAPI.append(path, data)
-    if _appendFn then
-        return pcall(_appendFn, path, data)
-    end
-    -- fallback: write ต่อท้าย
+    if _appendFn then return pcall(_appendFn, path, data) end
     local old = MEMORY_STORE[path] or ""
     return FileAPI.write(path, old .. data)
 end
@@ -318,9 +340,7 @@ function FileAPI.list(path)
 end
 
 function FileAPI.deleteFolder(path)
-    if _delFolderFn then
-        return pcall(_delFolderFn, path)
-    end
+    if _delFolderFn then return pcall(_delFolderFn, path) end
     return false
 end
 
@@ -335,7 +355,6 @@ end
 local Cleaner = {}
 
 function Cleaner.parseTimestamp(name)
-    -- หา pattern YYYYMMDD_HHMMSS ในชื่อ
     local y, mo, d, h, mi, s = name:match("(%d%d%d%d)(%d%d)(%d%d)_(%d%d)(%d%d)(%d%d)")
     if not y then return nil end
     local ok, t = pcall(function()
@@ -348,14 +367,12 @@ function Cleaner.parseTimestamp(name)
 end
 
 function Cleaner.listSessions()
-    if not FileAPI.canList() then return nil, "no listfiles" end
+    if not FileAPI.canList() then return nil end
     local base = Config.BaseFolder
     if not FileAPI.exists(base) then return {} end
-
     local files = FileAPI.list(base)
     local sessions = {}
     for _, path in ipairs(files) do
-        -- path อาจเป็น "BoomxicoDumps/V34_xxx_yyy" (folder)
         local name = path:match("([^/]+)$")
         if name and (name:match("^V%d") or name:match("^Session")) then
             local isFolder = true
@@ -365,15 +382,12 @@ function Cleaner.listSessions()
             end
             if isFolder then
                 table.insert(sessions, {
-                    path = path,
-                    name = name,
+                    path = path, name = name,
                     ts = Cleaner.parseTimestamp(name),
                 })
             end
         end
     end
-
-    -- sort เก่า → ใหม่
     table.sort(sessions, function(a, b)
         if not a.ts then return false end
         if not b.ts then return true end
@@ -384,63 +398,39 @@ end
 
 function Cleaner.cleanup()
     if not Config.AutoCleanupOldSessions then return end
-    if not FileAPI.canDeleteFolder() then
-        return
-    end
-
-    local sessions, err = Cleaner.listSessions()
+    if not FileAPI.canDeleteFolder() then return end
+    local sessions = Cleaner.listSessions()
     if not sessions then return end
-
     local now = os.time()
     local keepSec = Config.CleanupKeepDays * 24 * 60 * 60
     local toDelete = {}
-
-    -- เงื่อนไข 1: เก่ากว่า N วัน
     for _, s in ipairs(sessions) do
         if s.ts and (now - s.ts) > keepSec then
             table.insert(toDelete, s)
         end
     end
-
-    -- เงื่อนไข 2: เกิน CleanupMaxSessions
     local remaining = {}
     for _, s in ipairs(sessions) do
-        local inDelete = false
+        local inDel = false
         for _, d in ipairs(toDelete) do
-            if d.path == s.path then inDelete = true break end
+            if d.path == s.path then inDel = true break end
         end
-        if not inDelete then
-            table.insert(remaining, s)
-        end
+        if not inDel then table.insert(remaining, s) end
     end
     if #remaining > Config.CleanupMaxSessions then
         local extra = #remaining - Config.CleanupMaxSessions
-        for i = 1, extra do
-            table.insert(toDelete, remaining[i])
-        end
+        for i = 1, extra do table.insert(toDelete, remaining[i]) end
     end
-
-    -- ลบ
-    local logLines = {}
-    table.insert(logLines, "=== CLEANUP LOG ===")
-    table.insert(logLines, "Time: " .. os.date("%Y-%m-%d %H:%M:%S"))
-    table.insert(logLines, string.format("Total sessions: %d", #sessions))
-    table.insert(logLines, string.format("To delete: %d", #toDelete))
-
+    local logLines = { "=== CLEANUP LOG ===",
+        "Time: " .. os.date("%Y-%m-%d %H:%M:%S"),
+        string.format("Total: %d, Delete: %d", #sessions, #toDelete) }
     for _, s in ipairs(toDelete) do
         local ok = FileAPI.deleteFolder(s.path)
-        table.insert(logLines, string.format("  [%s] %s",
-            ok and "DEL" or "FAIL", s.name))
+        table.insert(logLines, string.format("  [%s] %s", ok and "DEL" or "FAIL", s.name))
     end
-
-    -- save cleanup log ใน base folder
-    local logPath = Config.BaseFolder .. "/_cleanup_log.txt"
     FileAPI.mkdir(Config.BaseFolder)
-    FileAPI.append(logPath, table.concat(logLines, "\n") .. "\n\n")
-
-    if #toDelete > 0 then
-        print(string.format("[DumpV3] 🧹 ลบ session เก่า %d อัน", #toDelete))
-    end
+    FileAPI.append(Config.BaseFolder .. "/_cleanup_log.txt",
+        table.concat(logLines, "\n") .. "\n\n")
 end
 
 -- ╔═══════════════════════════════════════════╗
@@ -513,6 +503,14 @@ function Utils.matchPattern(name, patterns)
     return false, nil
 end
 
+function Utils.matchAny(name, patterns)
+    if not name then return false, nil end
+    for _, p in ipairs(patterns) do
+        if name == p then return true, p end
+    end
+    return false, nil
+end
+
 function Utils.getAttributes(obj)
     local attrs = {}
     if not Config.Options.StoreAttributes then return attrs end
@@ -553,6 +551,18 @@ function Utils.waitBetweenWaves()
     end
 end
 
+-- ★★★ ตรวจ remote ทุก type ★★★
+function Utils.isRemote(obj)
+    if not obj then return false end
+    local cls = obj.ClassName
+    if cls == "RemoteEvent" or cls == "RemoteFunction"
+       or cls == "UnreliableRemoteEvent"  -- ★ ใหม่!
+       or cls == "BindableEvent" or cls == "BindableFunction" then
+        return true
+    end
+    return false
+end
+
 -- ╔═══════════════════════════════════════════╗
 -- ║  SECTION 8: STEALTH                       ║
 -- ╚═══════════════════════════════════════════╝
@@ -583,7 +593,6 @@ end
 function Stealth.init()
     if not Config.Stealth.Enabled then return end
     Utils.log("🛡️  Safe Mode (ไม่แตะ game metatable)")
-
     if Config.Stealth.RandomStartDelay then
         local d = 0.3 + math.random() * 0.7
         Utils.log(string.format("รอเริ่ม %.2f วิ...", d))
@@ -669,9 +678,9 @@ function Extractor:getProperties(obj)
         props.Source = "[Not Accessible]"
     end
 
-    if obj:IsA("RemoteEvent") then props.RemoteType = "Event" end
-    if obj:IsA("RemoteFunction") then props.RemoteType = "Function" end
-    if obj:IsA("BindableEvent") then props.RemoteType = "Bindable" end
+    if Utils.isRemote(obj) then
+        props.RemoteType = obj.ClassName  -- ★ ใช้ ClassName จริง
+    end
 
     if obj:IsA("ValueBase") then props.Value = tostring(obj.Value) end
 
@@ -759,11 +768,8 @@ function Serializer:save(name, tbl)
     local cfg = self.cfg
     local json = self:encode(tbl)
     if not json then return false end
-
     self:ensureFolder()
-
     local fileName = string.format("%s/%s.json", cfg.OutputFolder, name)
-
     local ok, err = FileAPI.write(fileName, json)
     if ok then
         local kb = math.floor(#json / 1024)
@@ -841,7 +847,6 @@ local function collectPlayers()
         if plr.TeamColor then
             entry.TeamColor = Utils.formatColor(plr.TeamColor)
         end
-
         local char = plr.Character
         if char then
             local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -894,7 +899,7 @@ local function collectPlayerCharDetail()
                     table.insert(d.Animations, {
                         Name = obj.Name, AnimationId = obj.AnimationId,
                     })
-                elseif obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                elseif Utils.isRemote(obj) then
                     table.insert(d.RemoteEvents, {
                         Name = obj.Name,
                         Class = obj.ClassName,
@@ -938,11 +943,12 @@ end
 local function findKnitServices()
     local knit = ReplicatedStorage:FindFirstChild("Knit")
     if not knit then return nil end
-    local knitKnit = knit:FindFirstChild("Knit")
-    if not knitKnit then return nil end
-    return knitKnit:FindFirstChild("Services")
+    local kk = knit:FindFirstChild("Knit")
+    if not kk then return nil end
+    return kk:FindFirstChild("Services")
 end
 
+-- ★★★ Service Scanner — เก็บทุก remote type ★★★
 local function collectImportantServices()
     local services = findKnitServices()
     if not services then
@@ -955,16 +961,10 @@ local function collectImportantServices()
         if svc then
             local entry = { Name = svcName, Remotes = {}, Others = {} }
             for _, obj in ipairs(svc:GetDescendants()) do
-                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                if Utils.isRemote(obj) then  -- ★ ใช้ isRemote
                     table.insert(entry.Remotes, {
                         Name = obj.Name,
-                        Class = obj.ClassName,
-                        Path = Stealth.quiet(function() return obj:GetFullName() end),
-                    })
-                elseif obj:IsA("BindableEvent") or obj:IsA("BindableFunction") then
-                    table.insert(entry.Others, {
-                        Name = obj.Name,
-                        Class = obj.ClassName,
+                        Class = obj.ClassName,   -- ★ เก็บ class จริง
                         Path = Stealth.quiet(function() return obj:GetFullName() end),
                     })
                 end
@@ -984,7 +984,7 @@ local function collectCharacterRemotes()
         if char:IsA("Model") then
             local remotes = {}
             for _, obj in ipairs(char:GetDescendants()) do
-                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                if Utils.isRemote(obj) then  -- ★
                     table.insert(remotes, {
                         Name = obj.Name,
                         Class = obj.ClassName,
@@ -1000,6 +1000,49 @@ local function collectCharacterRemotes()
     return result
 end
 
+-- ★★★ Unreliable Remote Scanner — ใหม่! ★★★
+local function collectUnreliableRemotes()
+    local result = {
+        InReplicatedStorage = {},
+        InWorkspace = {},
+        InOther = {},
+        Total = 0,
+    }
+
+    local function scan(container, key)
+        for _, obj in ipairs(container:GetDescendants()) do
+            if obj.ClassName == "UnreliableRemoteEvent" then
+                table.insert(result[key], {
+                    Name = obj.Name,
+                    Path = Stealth.quiet(function() return obj:GetFullName() end),
+                })
+                result.Total = result.Total + 1
+            end
+        end
+    end
+
+    scan(ReplicatedStorage, "InReplicatedStorage")
+    scan(workspace, "InWorkspace")
+
+    -- Scan services ทั้งหมด (Knit)
+    local services = findKnitServices()
+    if services then
+        for _, obj in ipairs(services:GetDescendants()) do
+            if obj.ClassName == "UnreliableRemoteEvent" then
+                local path = Stealth.quiet(function() return obj:GetFullName() end)
+                if path and not path:find("ReplicatedStorage") then
+                    table.insert(result.InOther, {
+                        Name = obj.Name, Path = path,
+                    })
+                    result.Total = result.Total + 1
+                end
+            end
+        end
+    end
+
+    return result
+end
+
 -- ╔═══════════════════════════════════════════╗
 -- ║  SECTION 14: SMART SCAN                   ║
 -- ╚═══════════════════════════════════════════╝
@@ -1011,6 +1054,7 @@ function SmartScan.scan()
         Collectibles = {}, Enemies = {}, Portals = {},
         Remotes = {}, Hitboxes = {}, Spawns = {},
         AntiCheatSuspects = {},
+        UnreliableRemotes = {},   -- ★ แยกเก็บ
     }
 
     Utils.log("🔍 สแกน Workspace...")
@@ -1098,14 +1142,21 @@ function SmartScan.scan()
 
     Utils.log("🔍 สแกน ReplicatedStorage...")
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")
-           or obj:IsA("BindableEvent") or obj:IsA("BindableFunction") then
+        if Utils.isRemote(obj) then  -- ★ ใช้ isRemote เก็บทุก type
             local ok, tag = Utils.matchPattern(obj.Name, cfg.RemotePatterns)
             table.insert(found.Remotes, {
                 Name = obj.Name, Class = obj.ClassName,
                 Path = Stealth.quiet(function() return obj:GetFullName() end),
                 Tag = tag or "none", Interested = ok,
             })
+
+            -- ★ แยก Unreliable
+            if obj.ClassName == "UnreliableRemoteEvent" then
+                table.insert(found.UnreliableRemotes, {
+                    Name = obj.Name,
+                    Path = Stealth.quiet(function() return obj:GetFullName() end),
+                })
+            end
         end
     end
 
@@ -1117,7 +1168,7 @@ end
 -- ╚═══════════════════════════════════════════╝
 local TargetedHook = {
     Log = {},
-    ClientLog = {},          -- ★ log ของ OnClientEvent
+    ClientLog = {},
     Hooked = {},
     HookedClient = {},
     Running = false,
@@ -1125,9 +1176,7 @@ local TargetedHook = {
 }
 
 function TargetedHook:isTargeted(obj)
-    if not (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then
-        return false
-    end
+    if not Utils.isRemote(obj) then return false end  -- ★ ทุก type
     local ok, tag = Utils.matchPattern(obj.Name, Config.TargetedHook.Patterns)
     return ok, tag
 end
@@ -1142,6 +1191,7 @@ function TargetedHook:attach(remote)
 
     self.Hooked[remote] = true
     local name = Stealth.quiet(function() return remote:GetFullName() end) or remote.Name
+    local cls = remote.ClassName
 
     local newFn = Stealth.wrap(function(self2, ...)
         local args = {...}
@@ -1168,6 +1218,7 @@ function TargetedHook:attach(remote)
         table.insert(TargetedHook.Log, {
             Remote = name,
             RemoteShort = remote.Name,
+            RemoteClass = cls,      -- ★ เก็บ class
             Direction = "FireServer",
             Args = argsInfo,
             Time = os.date("%H:%M:%S"),
@@ -1189,15 +1240,14 @@ function TargetedHook:attach(remote)
     return true
 end
 
--- ★ hook OnClientEvent — Server → Client (สำหรับ Hitbox)
 function TargetedHook:attachClient(remote)
     if self.HookedClient[remote] then return false end
     if not caps.hookfunction then return false end
-    if not remote:IsA("RemoteEvent") then return false end
+    if not (remote:IsA("RemoteEvent") or remote.ClassName == "UnreliableRemoteEvent") then
+        return false
+    end
 
     local hookfunction = rawGetGlobal("hookfunction")
-
-    -- ใช้ getconnections เพื่อดึง listener แล้ว hook
     local getconnections = rawGetGlobal("getconnections")
     if type(getconnections) ~= "function" then return false end
 
@@ -1231,10 +1281,10 @@ function TargetedHook:attachClient(remote)
                         }
                     end
                 end
-
                 table.insert(TargetedHook.ClientLog, {
                     Remote = name,
                     RemoteShort = remote.Name,
+                    RemoteClass = remote.ClassName,
                     Direction = "OnClientEvent",
                     Args = argsInfo,
                     Time = os.date("%H:%M:%S"),
@@ -1243,7 +1293,6 @@ function TargetedHook:attachClient(remote)
                 if #TargetedHook.ClientLog > Config.Limits.HookLog then
                     table.remove(TargetedHook.ClientLog, 1)
                 end
-
                 return oldFn(...)
             end)
             pcall(hookfunction, oldFn, newFn)
@@ -1279,7 +1328,7 @@ function TargetedHook:start()
         end
     end
 
-    Utils.ok("🎯 Hook " .. count .. " remotes (FireServer)")
+    Utils.ok("🎯 Hook " .. count .. " remotes (รวม Unreliable)")
 
     local dur = Config.TargetedHook.RunDuration
     Utils.log("⏳ เก็บ args " .. dur .. " วิ...")
@@ -1292,13 +1341,14 @@ function TargetedHook:start()
 end
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 16: HITBOX WATCHER               ║
+-- ║  SECTION 16: HITBOX WATCHER (v2)          ║
 -- ╚═══════════════════════════════════════════╝
 local HitboxWatcher = {
     Events = {},
     Seen = {},
     Running = false,
     Count = 0,
+    Skipped = 0,
 }
 
 local function getOwnerOfPart(part)
@@ -1317,27 +1367,40 @@ local function getOwnerOfPart(part)
     return nil
 end
 
+-- ★★★ ตรวจ hitbox แบบใหม่ ★★★
 function HitboxWatcher:isHitbox(part)
-    if not part:IsA("BasePart") then return false end
-
-    local ok, tag = Utils.matchPattern(part.Name,
-        Config.SmartDump.HitboxPatterns)
+    if not part:IsA("BasePart") then return false, nil end
 
     local cfg = Config.HitboxWatcher
+
+    -- ★★★ ข้ามชื่อ body part ★★★
+    local isIgnored = Utils.matchAny(part.Name, cfg.IgnoreNames)
+    if isIgnored then return false, "ignored-name" end
+
+    -- ★★★ ต้องมี pattern ที่ต้องการ ★★★
+    local hasReq = Utils.matchPattern(part.Name, cfg.RequirePatterns)
+    if not hasReq then return false, "no-require-pattern" end
+
+    -- ★★★ owner check ★★★
+    if cfg.IgnoreSelfOwner then
+        local owner = getOwnerOfPart(part)
+        if owner == LocalPlayer.Name then
+            return false, "self-owner"
+        end
+    end
+
+    -- ★★★ ตรวจคุณสมบัติ ★★★
     local isTransparent = part.Transparency >= cfg.MinTransparency
     local isCanCollideFalse = cfg.AlsoCheckCanCollideFalse
         and part.CanCollide == false
     local isMassless = cfg.AlsoCheckMassless and part.Massless == true
 
-    -- ถ้าชื่อ match → เก็บเลย
-    if ok then return true, tag end
-
-    -- ถ้าเป็น invisible + CanCollide false + Massless → น่าจะเป็น hitbox
     if isTransparent and (isCanCollideFalse or isMassless) then
-        return true, "auto-detect"
+        return true, "match"
     end
 
-    return false, nil
+    -- ถ้าชื่อ match pattern ตรง ๆ ก็เก็บ
+    return true, "named"
 end
 
 function HitboxWatcher:scanOnce()
@@ -1351,7 +1414,7 @@ function HitboxWatcher:scanOnce()
     local ok, err = pcall(function()
         for _, obj in ipairs(root:GetDescendants()) do
             if not self.Seen[obj] then
-                local isHb, tag = self:isHitbox(obj)
+                local isHb, reason = self:isHitbox(obj)
                 if isHb then
                     self.Seen[obj] = true
                     self.Count = self.Count + 1
@@ -1371,7 +1434,7 @@ function HitboxWatcher:scanOnce()
                         Name = obj.Name,
                         Class = obj.ClassName,
                         Owner = owner,
-                        Tag = tag,
+                        Reason = reason,
                         Position = Utils.formatVector(obj.Position),
                         Size = Utils.formatVector(obj.Size),
                         Transparency = obj.Transparency,
@@ -1393,11 +1456,20 @@ function HitboxWatcher:scanOnce()
                             event.DespawnTime = t
                             event.Duration = t - spawnTime
                             event.DurationMs = math.floor(event.Duration * 1000)
+                            -- ★ ลบ outlier ที่อยู่นานผิดปกติ
+                            if event.DurationMs > Config.HitboxWatcher.MaxValidDurationMs then
+                                event.IsOutlier = true
+                            end
                         end)
                     end)
 
                     if #self.Events > Config.Limits.HitboxLog then
                         table.remove(self.Events, 1)
+                    end
+                else
+                    -- นับที่ถูก skip (ไม่เก็บ)
+                    if reason and reason ~= "no-require-pattern" then
+                        self.Skipped = self.Skipped + 1
                     end
                 end
             end
@@ -1412,8 +1484,12 @@ function HitboxWatcher:start()
     if self.Running then return end
     self.Running = true
 
-    Utils.log("📊 HitboxWatcher: เริ่ม (poll " ..
+    Utils.log("📊 HitboxWatcher v2: เริ่ม (poll " ..
         (Config.HitboxWatcher.PollRate * 1000) .. "ms)")
+    Utils.log("   - ตัด body part (Collide, Torso, Head, ...)")
+    Utils.log("   - เฉพาะ Hitbox/HitGlow/CombatTrail/SlashHit")
+    Utils.log("   - ตัด owner = ตัวเอง")
+    Utils.log("   - duration ≤ " .. Config.HitboxWatcher.MaxValidDurationMs .. "ms")
 
     local dur = Config.HitboxWatcher.RunDuration
     local t0 = tick()
@@ -1426,7 +1502,8 @@ function HitboxWatcher:start()
         if wait > 0 then task.wait(wait) else task.wait() end
     end
 
-    Utils.ok("📊 HitboxWatcher: " .. self.Count .. " hitbox events")
+    Utils.ok("📊 HitboxWatcher v2: " .. self.Count .. " hitbox events (skip " ..
+        self.Skipped .. ")")
 end
 
 -- ╔═══════════════════════════════════════════╗
@@ -1437,10 +1514,10 @@ local Analyzer = {}
 function Analyzer.analyze(dump, extra)
     extra = extra or {}
     local report = {
-        Summary = {}, Hints = {},
-        Recommendations = {}, Risks = {},
+        Summary = {}, Hints = {}, Recommendations = {}, Risks = {},
         TimingAnalysis = {},
-        Correlations = {},        -- ★ correlate hook ↔ hitbox
+        TopHookedRemotes = {},
+        UnreliableCount = 0,
     }
 
     report.Summary.Collectibles = #(dump.Collectibles or {})
@@ -1449,7 +1526,8 @@ function Analyzer.analyze(dump, extra)
     report.Summary.Remotes = #(dump.Remotes or {})
     report.Summary.Hitboxes = #(dump.Hitboxes or {})
     report.Summary.Spawns = #(dump.Spawns or {})
-    report.Summary.AntiCheat = #(dump.AntiCheatSuspUS or dump.AntiCheatSuspects or {})
+    report.Summary.AntiCheat = #(dump.AntiCheatSuspects or {})
+    report.Summary.UnreliableRemotes = #(dump.UnreliableRemotes or {})
 
     local interested = 0
     for _, r in ipairs(dump.Remotes or {}) do
@@ -1460,10 +1538,13 @@ function Analyzer.analyze(dump, extra)
     report.Summary.HookClientEvent = #(extra.ClientLog or {})
     report.Summary.HitboxEvents = #(extra.HitboxEvents or {})
 
-    -- Timing hitbox
+    -- ★★ Timing hitbox — กรอง outlier ★★
     local durations = {}
     for _, e in ipairs(extra.HitboxEvents or {}) do
-        if e.DurationMs then table.insert(durations, e.DurationMs) end
+        if e.DurationMs and not e.IsOutlier
+           and e.DurationMs <= Config.HitboxWatcher.MaxValidDurationMs then
+            table.insert(durations, e.DurationMs)
+        end
     end
     if #durations > 0 then
         table.sort(durations)
@@ -1472,55 +1553,35 @@ function Analyzer.analyze(dump, extra)
             MinMs = durations[1],
             MaxMs = durations[#durations],
             MedianMs = durations[math.floor(#durations / 2) + 1],
-            RecommendedParryDelayMs =
-                math.max(20, math.floor(durations[1] / 3)),
+            RecommendedParryDelayMs = math.max(20, math.floor(durations[1] / 3)),
         }
         table.insert(report.Hints, string.format(
-            "🎯 Parry window: %d-%dms (แนะนำ delay %dms)",
+            "🎯 Hitbox duration: %d-%dms (median %d, แนะนำ %dms)",
             report.TimingAnalysis.MinMs,
             report.TimingAnalysis.MaxMs,
+            report.TimingAnalysis.MedianMs,
             report.TimingAnalysis.RecommendedParryDelayMs))
     end
 
-    -- ★ Correlate: hook event → hitbox เกิดห่างกี่ ms
-    local hooks = extra.HookLog or {}
-    local hbs = extra.HitboxEvents or {}
-    for _, hb in ipairs(hbs) do
-        if hb.SpawnTime then
-            -- หา hook ที่ใกล้สุดก่อน spawn
-            local closest, minDelta = nil, math.huge
-            for _, h in ipairs(hooks) do
-                if h.Tick and h.Tick < hb.SpawnTime then
-                    local delta = hb.SpawnTime - h.Tick
-                    if delta < minDelta and delta < 2 then
-                        minDelta = delta
-                        closest = h
-                    end
-                end
-            end
-            if closest then
-                local key = closest.RemoteShort
-                report.Correlations[key] = report.Correlations[key] or {
-                    count = 0, totalDelta = 0, samples = {},
-                }
-                local c = report.Correlations[key]
-                c.count = c.count + 1
-                c.totalDelta = c.totalDelta + minDelta
-                table.insert(c.samples, math.floor(minDelta * 1000))
-            end
-        end
+    -- ★★ วิเคราะห์ hook ★★
+    local byRemote = {}
+    for _, log in ipairs(extra.HookLog or {}) do
+        byRemote[log.RemoteShort] = (byRemote[log.RemoteShort] or 0) + 1
     end
-    for _, c in pairs(report.Correlations) do
-        c.avgDeltaMs = math.floor(c.totalDelta / c.count * 1000)
+    report.TopHookedRemotes = byRemote
+
+    if report.Summary.UnreliableRemotes > 0 then
+        table.insert(report.Hints,
+            "⭐ UnreliableRemoteEvent: " .. report.Summary.UnreliableRemotes .. " ตัว")
     end
 
     if report.Summary.Collectibles > 0 then
         table.insert(report.Hints,
-            "✅ Auto Collect: " .. report.Summary.Collectibles .. " จุด")
+            "✅ Auto Collect: " .. report.Summary.Collectibles)
     end
     if report.Summary.Enemies > 0 then
         table.insert(report.Hints,
-            "✅ Auto Farm: " .. report.Summary.Enemies .. " targets")
+            "✅ Auto Farm: " .. report.Summary.Enemies)
     end
     if report.Summary.HookFireServer > 0 then
         table.insert(report.Hints,
@@ -1532,7 +1593,7 @@ function Analyzer.analyze(dump, extra)
     end
     if report.Summary.AntiCheat > 0 then
         table.insert(report.Risks,
-            "⚠️ Anti-Cheat: " .. report.Summary.AntiCheat .. " สัญญาณ")
+            "⚠️ Anti-Cheat: " .. report.Summary.AntiCheat)
     end
 
     return report
@@ -1545,7 +1606,7 @@ end
 local startTime = tick()
 
 Utils.log("═══════════════════════════════════════")
-Utils.log("Dump Framework V" .. Config.Version .. " | SESSION")
+Utils.log("Dump Framework V" .. Config.Version .. " | UNRELIABLE")
 Utils.log("═══════════════════════════════════════")
 Utils.log("📁 Session: " .. Config.OutputFolder)
 Utils.log(string.format("Write: %s | Clipboard: %s | Hook: %s | List: %s",
@@ -1554,7 +1615,6 @@ Utils.log(string.format("Write: %s | Clipboard: %s | Hook: %s | List: %s",
     tostring(caps.hookfunction),
     tostring(FileAPI.canList())))
 
--- ★ Cleanup session เก่า
 if Config.AutoCleanupOldSessions then
     pcall(Cleaner.cleanup)
 end
@@ -1565,9 +1625,7 @@ local extractor = Extractor.new(Config)
 local serializer = Serializer.new(Config)
 local summary = {}
 
--- ╔═══════════════════════════════════════════╗
--- ║  WAVE 1                                   ║
--- ╚═══════════════════════════════════════════╝
+-- ╔═══ WAVE 1 ═══╗
 Utils.log("═══ WAVE 1: ข้อมูลเบา ═══")
 
 if Config.Targets.Info then
@@ -1635,9 +1693,7 @@ end
 
 Utils.waitBetweenWaves()
 
--- ╔═══════════════════════════════════════════╗
--- ║  WAVE 2                                   ║
--- ╚═══════════════════════════════════════════╝
+-- ╔═══ WAVE 2 ═══╗
 if Config.Targets.Workspace then
     Utils.log("═══ WAVE 2: Workspace ═══")
     extractor:reset()
@@ -1648,16 +1704,11 @@ if Config.Targets.Workspace then
     if ok then
         serializer:save("04_workspace", wsData)
         summary["Workspace"] = wsCount
-        if extractor.aborted then
-            Utils.warn("⚠️ ถูกตัดที่ MaxObjects — ได้ " .. wsCount)
-        end
     else summary["Workspace"] = "ERR" end
     Utils.waitBetweenWaves()
 end
 
--- ╔═══════════════════════════════════════════╗
--- ║  WAVE 3                                   ║
--- ╚═══════════════════════════════════════════╝
+-- ╔═══ WAVE 3 ═══╗
 if Config.Targets.ReplicatedStorage then
     Utils.log("═══ WAVE 3: ReplicatedStorage ═══")
     extractor:reset()
@@ -1682,17 +1733,19 @@ if Config.Targets.SmartScan then
         serializer:save("15_smart_hitboxes", sData.Hitboxes)
         serializer:save("16_smart_spawns", sData.Spawns)
         serializer:save("17_smart_anticheat", sData.AntiCheatSuspects)
+        serializer:save("18_smart_unreliable", sData.UnreliableRemotes)  -- ★
         summary["Collectibles"] = #sData.Collectibles
         summary["Enemies"] = #sData.Enemies
         summary["Remotes"] = #sData.Remotes
         summary["Hitboxes"] = #sData.Hitboxes
         summary["AntiCheat"] = #sData.AntiCheatSuspects
+        summary["Unreliable"] = #sData.UnreliableRemotes
         _G.__BoomxicoSmartData = sData
     else summary["SmartScan"] = "ERR" end
 end
 
 if Config.Targets.BlockServiceScan then
-    Utils.log("═══ WAVE 3: Important Services ═══")
+    Utils.log("═══ WAVE 3: Services ═══")
     local ok, svcData = pcall(collectImportantServices)
     if ok then
         serializer:save("24_important_services", svcData)
@@ -1711,18 +1764,26 @@ if Config.Targets.CharacterRemotes then
     else summary["CharRemotes"] = "ERR" end
 end
 
+-- ★★★ Unreliable scan แยก ★★★
+if Config.Targets.UnreliableScan then
+    Utils.log("═══ WAVE 3: Unreliable Scan ═══")
+    local ok, ur = pcall(collectUnreliableRemotes)
+    if ok then
+        serializer:save("26_unreliable_remotes", ur)
+        summary["UnreliableTotal"] = ur.Total
+    else summary["UnreliableTotal"] = "ERR" end
+end
+
 Utils.waitBetweenWaves()
 
--- ╔═══════════════════════════════════════════╗
--- ║  WAVE 4                                   ║
--- ╚═══════════════════════════════════════════╝
+-- ╔═══ WAVE 4 ═══╗
 Utils.log("═══ WAVE 4: Live Capture ═══")
 
 if Config.Targets.TargetedHook then
     local ok = pcall(function() TargetedHook:start() end)
     if ok then
-        serializer:save("26_targeted_hook_server", TargetedHook.Log)
-        serializer:save("26b_targeted_hook_client", TargetedHook.ClientLog)
+        serializer:save("27_targeted_hook_server", TargetedHook.Log)
+        serializer:save("28_targeted_hook_client", TargetedHook.ClientLog)
         summary["HookServer"] = #TargetedHook.Log
         summary["HookClient"] = #TargetedHook.ClientLog
     else summary["HookServer"] = "ERR" end
@@ -1731,14 +1792,12 @@ end
 if Config.Targets.HitboxWatcher then
     local ok = pcall(function() HitboxWatcher:start() end)
     if ok then
-        serializer:save("27_hitbox_realtime", HitboxWatcher.Events)
+        serializer:save("29_hitbox_realtime", HitboxWatcher.Events)
         summary["HitboxEvents"] = #HitboxWatcher.Events
     else summary["HitboxEvents"] = "ERR" end
 end
 
--- ╔═══════════════════════════════════════════╗
--- ║  WAVE 5                                   ║
--- ╚═══════════════════════════════════════════╝
+-- ╔═══ WAVE 5 ═══╗
 if Config.Targets.Analysis and _G.__BoomxicoSmartData then
     Utils.log("═══ WAVE 5: Analyze ═══")
     local ok, report = pcall(function()
@@ -1751,21 +1810,19 @@ if Config.Targets.Analysis and _G.__BoomxicoSmartData then
     if ok then
         for _, h in ipairs(report.Hints) do Utils.hint(h) end
         for _, r in ipairs(report.Risks) do Utils.warn(r) end
-        serializer:save("28_analysis_report", report)
+        serializer:save("30_analysis_report", report)
         summary["Analysis"] = "OK"
     end
 end
 
 serializer:saveIndex()
 
--- ═══════════════════════════════════════════
---  สรุปผล
--- ═══════════════════════════════════════════
+-- สรุป
 local elapsed = tick() - startTime
 summary["Total Time (s)"] = string.format("%.2f", elapsed)
 summary["Total Objects"] = extractor.count
 
-Utils.printSummary(summary, "Dump V3.4 Complete")
+Utils.printSummary(summary, "Dump V3.5 Complete")
 
 Utils.log("═══════════════════════════════════════")
 Utils.log("📂 Session: " .. Config.OutputFolder)
