@@ -1,5 +1,5 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Dump Framework V3.1 | FULL STEALTH EDITION (FIXED)           ║
+-- ║  Dump Framework V3.2 | FULL STEALTH EDITION (FIXED)           ║
 -- ║  By Boomxico | Delta Executor                                 ║
 -- ║  Auto-Scale | Stealth | SmartScan | Analyzer | Sniffer        ║
 -- ╚═══════════════════════════════════════════════════════════════╝
@@ -8,7 +8,7 @@
 -- ║  SECTION 1: CONFIG                        ║
 -- ╚═══════════════════════════════════════════╝
 local Config = {
-    Version = "3.1.0",
+    Version = "3.2.0",
     Author  = "Boomxico",
     OutputFolder = "BoomxicoDumps",
 
@@ -125,7 +125,7 @@ local LocalPlayer = Players.LocalPlayer
 local scriptAlive = true
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 3: CAPABILITIES (โหลดครั้งเดียว) ║
+-- ║  SECTION 3: ENV RESOLVER                  ║
 -- ╚═══════════════════════════════════════════╝
 local function resolveEnv()
     local ok, env = pcall(function()
@@ -139,9 +139,11 @@ end
 local ENV = resolveEnv()
 
 local function rawGetGlobal(name)
-    local v = rawget(ENV, name)
-    if v == nil then v = rawget(_G, name) end
-    return v
+    local ok, v = pcall(function() return ENV[name] end)
+    if ok and v ~= nil then return v end
+    local ok2, v2 = pcall(function() return _G[name] end)
+    if ok2 and v2 ~= nil then return v2 end
+    return nil
 end
 
 local caps = {
@@ -159,46 +161,105 @@ local caps = {
     getscriptbytecode = type(rawGetGlobal("getscriptbytecode")) == "function",
     getupvalues       = type(rawGetGlobal("getupvalues")) == "function",
     decompile         = type(rawGetGlobal("decompile")) == "function",
-    writefile         = type(rawGetGlobal("writefile")) == "function",
-    write_file        = type(rawGetGlobal("write_file")) == "function",
-    isfolder          = type(rawGetGlobal("isfolder")) == "function",
-    makefolder        = type(rawGetGlobal("makefolder")) == "function",
     identifyexecutor  = type(rawGetGlobal("identifyexecutor")) == "function",
     getnamecallmethod = type(rawGetGlobal("getnamecallmethod")) == "function",
+    setclipboard      = type(rawGetGlobal("setclipboard")) == "function"
+                        or type(rawGetGlobal("toclipboard")) == "function",
     debug_getinfo     = debug and type(debug.getinfo) == "function",
 }
 
 -- ╔═══════════════════════════════════════════╗
--- ║  SECTION 4: FILE API (fallback ปลอดภัย)   ║
+-- ║  SECTION 4: FILE API (multi-fallback)     ║
 -- ╚═══════════════════════════════════════════╝
 local FileAPI = {}
 
-function FileAPI.exists(path)
-    if caps.isfolder then
-        local ok, r = pcall(rawGetGlobal("isfolder"), path)
-        if ok then return r end
+local function findFn(names)
+    for _, name in ipairs(names) do
+        local fn = rawGetGlobal(name)
+        if type(fn) == "function" then return fn, name end
     end
-    if type(rawGetGlobal("isfile")) == "function" then
-        local ok, r = pcall(rawGetGlobal("isfile"), path)
-        if ok then return r end
+    local delta = rawGetGlobal("Delta") or rawGetGlobal("delta")
+    if type(delta) == "table" then
+        for _, name in ipairs(names) do
+            if type(delta[name]) == "function" then return delta[name], "Delta."..name end
+        end
+    end
+    return nil, nil
+end
+
+local _writeFn      = findFn({"writefile","write_file","WriteFile"})
+local _readFn       = findFn({"readfile","read_file","ReadFile"})
+local _isFolderFn   = findFn({"isfolder","is_folder","IsFolder"})
+local _isFileFn     = findFn({"isfile","is_file","IsFile"})
+local _makeFolderFn = findFn({"makefolder","make_folder","MakeFolder"})
+local _listFilesFn  = findFn({"listfiles","list_files","ListFiles"})
+local _delFileFn    = findFn({"delfile","del_file","DeleteFile"})
+local _clipboardFn  = findFn({"setclipboard","toclipboard"})
+
+local MEMORY_STORE = {}
+local USE_MEMORY_FALLBACK = (_writeFn == nil)
+
+_G.BoomxicoDumpStore = MEMORY_STORE
+
+function FileAPI.hasWriteSupport() return _writeFn ~= nil end
+function FileAPI.hasClipboard()    return _clipboardFn ~= nil end
+
+function FileAPI.exists(path)
+    if USE_MEMORY_FALLBACK then return MEMORY_STORE[path] ~= nil end
+    if _isFolderFn then
+        local ok, r = pcall(_isFolderFn, path)
+        if ok and r then return true end
+    end
+    if _isFileFn then
+        local ok, r = pcall(_isFileFn, path)
+        if ok and r then return true end
     end
     return false
 end
 
 function FileAPI.mkdir(path)
-    if not caps.makefolder then return false end
+    if USE_MEMORY_FALLBACK then
+        MEMORY_STORE[path] = MEMORY_STORE[path] or {}
+        return true
+    end
+    if not _makeFolderFn then return false end
     if FileAPI.exists(path) then return true end
-    local ok = pcall(rawGetGlobal("makefolder"), path)
+    local ok = pcall(_makeFolderFn, path)
     return ok
 end
 
 function FileAPI.write(path, data)
-    if caps.writefile then
-        return pcall(rawGetGlobal("writefile"), path, data)
-    elseif caps.write_file then
-        return pcall(rawGetGlobal("write_file"), path, data)
+    if USE_MEMORY_FALLBACK then
+        MEMORY_STORE[path] = data
+        return true
     end
-    return false, "no writefile/write_file available"
+    local ok, err = pcall(_writeFn, path, data)
+    if not ok then
+        MEMORY_STORE[path] = data
+    end
+    return ok, err
+end
+
+function FileAPI.read(path)
+    if USE_MEMORY_FALLBACK then return MEMORY_STORE[path] end
+    if not _readFn then return nil end
+    local ok, r = pcall(_readFn, path)
+    if ok then return r end
+    return nil
+end
+
+function FileAPI.copyToClipboard(text)
+    if not _clipboardFn then return false end
+    local ok = pcall(_clipboardFn, text)
+    return ok
+end
+
+if USE_MEMORY_FALLBACK then
+    warn("[DumpV3] ⚠️ Executor ไม่มี writefile — ผลเก็บใน memory")
+    warn("[DumpV3]    เข้าถึงผ่าน: _G.BoomxicoDumpStore")
+    if FileAPI.hasClipboard() then
+        warn("[DumpV3]    มี setclipboard — จะคัดลอก index ให้อัตโนมัติ")
+    end
 end
 
 -- ╔═══════════════════════════════════════════╗
@@ -218,15 +279,39 @@ function Utils.truncate(s, maxLen)
     return string.sub(s, 1, maxLen) .. "..."
 end
 
+-- ★ FIXED: รับได้ทั้ง Color3 / BrickColor / table
 function Utils.formatColor(c)
-    return string.format("%.3f,%.3f,%.3f", c.R, c.G, c.B)
+    if c == nil then return "?" end
+
+    local t = typeof(c)
+
+    if t == "BrickColor" then
+        local ok, col = pcall(function() return c.Color end)
+        if ok and col then
+            return string.format("%.3f,%.3f,%.3f [%s]",
+                col.R, col.G, col.B, tostring(c))
+        end
+        return tostring(c)
+    end
+
+    if t == "Color3" then
+        return string.format("%.3f,%.3f,%.3f", c.R, c.G, c.B)
+    end
+
+    if type(c) == "table" and c.R and c.G and c.B then
+        return string.format("%.3f,%.3f,%.3f", c.R, c.G, c.B)
+    end
+
+    return tostring(c)
 end
 
 function Utils.formatVector(v)
+    if not v then return "?" end
     return string.format("%.3f,%.3f,%.3f", v.X, v.Y, v.Z)
 end
 
 function Utils.formatPosition(p)
+    if not p then return nil end
     return { X = p.X, Y = p.Y, Z = p.Z }
 end
 
@@ -339,7 +424,6 @@ function Stealth.parentGui(gui)
         gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
         return
     end
-
     if caps.gethui then
         local ok, hui = pcall(rawGetGlobal("gethui"))
         if ok and hui then
@@ -347,10 +431,8 @@ function Stealth.parentGui(gui)
             if parented then return end
         end
     end
-
     local ok = pcall(function() gui.Parent = CoreGui end)
     if ok then return end
-
     if Config.Stealth.RandomizeNames then
         gui.Name = Stealth.randomName("Svc")
     end
@@ -410,7 +492,7 @@ end
 
 function Stealth.init()
     if not Config.Stealth.Enabled then
-        Utils.log("Stealth: ปิด (ใช้โหมดปกติ)")
+        Utils.log("Stealth: ปิด")
         return
     end
     Utils.log("🛡️  เริ่มระบบ Stealth...")
@@ -702,8 +784,7 @@ function Serializer:encode(tbl)
 end
 
 function Serializer:ensureFolder()
-    local folder = self.cfg.OutputFolder
-    FileAPI.mkdir(folder)
+    FileAPI.mkdir(self.cfg.OutputFolder)
 end
 
 function Serializer:save(name, tbl)
@@ -720,10 +801,12 @@ function Serializer:save(name, tbl)
     local ok, err = FileAPI.write(fileName, json)
     if ok then
         local kb = math.floor(#json / 1024)
-        Utils.ok(string.format("%-26s → %d KB", name, kb))
+        local mode = FileAPI.hasWriteSupport() and "" or " [mem]"
+        Utils.ok(string.format("%-26s → %d KB%s", name, kb, mode))
         table.insert(self.index, {
             name = name, file = fileName, size_kb = kb,
             count = type(tbl) == "table" and #tbl or 0,
+            mode = FileAPI.hasWriteSupport() and "disk" or "memory",
         })
         return true
     else
@@ -744,11 +827,19 @@ function Serializer:saveIndex()
         PlaceId = game.PlaceId,
         JobId = game.JobId,
         Stealth = Config.Stealth.Enabled,
+        WriteSupport = FileAPI.hasWriteSupport(),
         Files = self.index,
     })
     if json then
         FileAPI.write(file, json)
         Utils.ok("Index: " .. file)
+
+        if not FileAPI.hasWriteSupport() and FileAPI.hasClipboard() then
+            local ok = FileAPI.copyToClipboard(json)
+            if ok then
+                Utils.ok("📋 คัดลอก INDEX ลง clipboard แล้ว")
+            end
+        end
     end
 end
 
@@ -775,6 +866,7 @@ local function collectInfo()
         MaxPlayers = Players.MaxPlayers,
         IsStudio = RunService:IsStudio(),
         StealthEnabled = Config.Stealth.Enabled,
+        WriteSupport = FileAPI.hasWriteSupport(),
     }
 end
 
@@ -789,8 +881,12 @@ local function collectPlayers()
             UserId = plr.UserId,
             AccountAge = plr.AccountAge,
             Team = plr.Team and plr.Team.Name or nil,
-            TeamColor = plr.TeamColor and Utils.formatColor(plr.TeamColor) or nil,
         }
+        -- ★ FIXED: pcall กัน BrickColor/Color3 error
+        if plr.TeamColor then
+            entry.TeamColor = Utils.formatColor(plr.TeamColor)
+        end
+
         local char = plr.Character
         if char then
             local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -896,14 +992,18 @@ end
 local function collectTerrainInfo()
     local terrain = workspace:FindFirstChildOfClass("Terrain")
     if not terrain then return { Exists = false } end
-    return {
-        Exists = true,
-        WaterWaveSize = terrain.WaterWaveSize,
-        WaterWaveSpeed = terrain.WaterWaveSpeed,
-        WaterTransparency = terrain.WaterTransparency,
-        WaterColor = Utils.formatColor(terrain.WaterColor),
-        Decoration = terrain.Decoration,
-    }
+    local ok, info = pcall(function()
+        return {
+            Exists = true,
+            WaterWaveSize = terrain.WaterWaveSize,
+            WaterWaveSpeed = terrain.WaterWaveSpeed,
+            WaterTransparency = terrain.WaterTransparency,
+            WaterColor = Utils.formatColor(terrain.WaterColor),
+            Decoration = terrain.Decoration,
+        }
+    end)
+    if ok then return info end
+    return { Exists = true, Error = "cannot read terrain props" }
 end
 
 -- ╔═══════════════════════════════════════════╗
@@ -1066,15 +1166,21 @@ function Sniffer.start()
     local setRO       = rawGetGlobal("setreadonly")
     local getNameCall = rawGetGlobal("getnamecallmethod")
 
-    local mt = getRawMT(game)
-    if not mt then return end
+    local ok, mt = pcall(getRawMT, game)
+    if not ok or not mt then
+        Utils.warn("Sniffer: getrawmetatable(game) fail")
+        return
+    end
 
     local oldNamecall = mt.__namecall
     Sniffer.Originals = oldNamecall
 
-    setRO(mt, false)
+    pcall(setRO, mt, false)
     mt.__namecall = Stealth.wrap(function(self, ...)
-        local method = getNameCall()
+        local method
+        local mOk, mVal = pcall(getNameCall)
+        if mOk then method = mVal end
+
         if method and (method == "FireServer" or method == "InvokeServer")
            and typeof(self) == "Instance"
            and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
@@ -1102,7 +1208,7 @@ function Sniffer.start()
         end
         return oldNamecall(self, ...)
     end)
-    setRO(mt, true)
+    pcall(setRO, mt, true)
 
     Sniffer.Hooked = true
     Sniffer.Running = true
@@ -1142,34 +1248,39 @@ function HitboxTracker:start()
 
     task.spawn(function()
         while self.Running and scriptAlive do
-            for _, obj in ipairs(workspace:GetDescendants()) do
-                if obj:IsA("BasePart")
-                   and self.Watching[obj.Name]
-                   and not obj:GetAttribute(tagKey) then
-                    obj:SetAttribute(tagKey, true)
-                    local spawn = tick()
-                    table.insert(self.Events, {
-                        Name = obj.Name,
-                        SpawnTime = spawn,
-                        Path = Stealth.quiet(function() return obj:GetFullName() end),
-                    })
-                    task.spawn(function()
-                        local conn
-                        conn = obj.AncestryChanged:Connect(function()
-                            if conn then conn:Disconnect() end
-                            for _, e in ipairs(self.Events) do
-                                if e.SpawnTime == spawn and not e.DespawnTime then
-                                    e.DespawnTime = tick()
-                                    e.Duration = e.DespawnTime - e.SpawnTime
-                                    break
+            local ok, err = pcall(function()
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("BasePart")
+                       and self.Watching[obj.Name]
+                       and not obj:GetAttribute(tagKey) then
+                        obj:SetAttribute(tagKey, true)
+                        local spawn = tick()
+                        table.insert(self.Events, {
+                            Name = obj.Name,
+                            SpawnTime = spawn,
+                            Path = Stealth.quiet(function() return obj:GetFullName() end),
+                        })
+                        task.spawn(function()
+                            local conn
+                            conn = obj.AncestryChanged:Connect(function()
+                                if conn then conn:Disconnect() end
+                                for _, e in ipairs(self.Events) do
+                                    if e.SpawnTime == spawn and not e.DespawnTime then
+                                        e.DespawnTime = tick()
+                                        e.Duration = e.DespawnTime - e.SpawnTime
+                                        break
+                                    end
                                 end
-                            end
+                            end)
                         end)
-                    end)
-                    if #self.Events > Config.Limits.HitboxMaxLog then
-                        table.remove(self.Events, 1)
+                        if #self.Events > Config.Limits.HitboxMaxLog then
+                            table.remove(self.Events, 1)
+                        end
                     end
                 end
+            end)
+            if not ok then
+                Utils.warn("HitboxTracker: " .. tostring(err))
             end
             task.wait(0.1)
         end
@@ -1280,6 +1391,9 @@ local startTime = tick()
 Utils.log("═══════════════════════════════════════")
 Utils.log("Dump Framework V" .. Config.Version .. " | by " .. Config.Author)
 Utils.log("═══════════════════════════════════════")
+Utils.log(string.format("WriteSupport: %s | Clipboard: %s",
+    tostring(FileAPI.hasWriteSupport()),
+    tostring(FileAPI.hasClipboard())))
 
 Stealth.init()
 
@@ -1306,74 +1420,121 @@ end
 
 -- 02) PLAYERS
 if Config.Targets.Players then
-    local players = collectPlayers()
-    serializer:save("02_players", players)
-    summary["Players"] = #players
+    local ok, players = pcall(collectPlayers)
+    if ok then
+        serializer:save("02_players", players)
+        summary["Players"] = #players
+    else
+        Utils.warn("collectPlayers error: " .. tostring(players))
+        summary["Players"] = "ERR"
+    end
 end
 
 -- 03) PLAYERS CHARACTER
 if Config.Targets.PlayersCharacter then
-    local d = collectPlayerCharDetail()
-    serializer:save("03_players_character", d)
-    summary["PlayersCharacter"] = "OK"
+    local ok, d = pcall(collectPlayerCharDetail)
+    if ok then
+        serializer:save("03_players_character", d)
+        summary["PlayersCharacter"] = "OK"
+    else
+        Utils.warn("collectPlayerCharDetail error: " .. tostring(d))
+        summary["PlayersCharacter"] = "ERR"
+    end
 end
 
 -- 04) WORKSPACE
 if Config.Targets.Workspace then
     Utils.log("Dumping Workspace...")
     extractor:reset()
-    local wsData, wsCount = extractor:dumpContainer(workspace)
-    serializer:save("04_workspace", wsData)
-    summary["Workspace"] = wsCount
+    local ok, wsData, wsCount = pcall(function()
+        local d, c = extractor:dumpContainer(workspace)
+        return d, c
+    end)
+    if ok then
+        serializer:save("04_workspace", wsData)
+        summary["Workspace"] = wsCount
+    else
+        Utils.warn("Workspace dump error: " .. tostring(wsData))
+        summary["Workspace"] = "ERR"
+    end
 end
 
 -- 05) WORKSPACE TREE
 if Config.Targets.WorkspaceGrouped then
-    local tree = extractor:buildTree(workspace, 4)
-    serializer:save("05_workspace_tree", tree)
-    summary["WorkspaceTree"] = "OK"
+    local ok, tree = pcall(function() return extractor:buildTree(workspace, 4) end)
+    if ok then
+        serializer:save("05_workspace_tree", tree)
+        summary["WorkspaceTree"] = "OK"
+    else
+        summary["WorkspaceTree"] = "ERR"
+    end
 end
 
 -- 06) REPLICATEDSTORAGE
 if Config.Targets.ReplicatedStorage then
     Utils.log("Dumping ReplicatedStorage...")
     extractor:reset()
-    local rsData, rsCount = extractor:dumpContainer(ReplicatedStorage)
-    serializer:save("06_replicatedstorage", rsData)
-    summary["ReplicatedStorage"] = rsCount
+    local ok, rsData, rsCount = pcall(function()
+        local d, c = extractor:dumpContainer(ReplicatedStorage)
+        return d, c
+    end)
+    if ok then
+        serializer:save("06_replicatedstorage", rsData)
+        summary["ReplicatedStorage"] = rsCount
+    else
+        summary["ReplicatedStorage"] = "ERR"
+    end
 end
 
 -- 07) LIGHTING
 if Config.Targets.Lighting then
     extractor:reset()
-    local liData, liCount = extractor:dumpContainer(Lighting)
-    serializer:save("07_lighting", liData)
-    summary["Lighting"] = liCount
+    local ok, liData, liCount = pcall(function()
+        local d, c = extractor:dumpContainer(Lighting)
+        return d, c
+    end)
+    if ok then
+        serializer:save("07_lighting", liData)
+        summary["Lighting"] = liCount
+    else
+        summary["Lighting"] = "ERR"
+    end
 end
 
 -- 08) SOUNDS
 if Config.Targets.SoundService then
-    local sounds = collectSounds()
-    serializer:save("08_sounds", sounds)
-    summary["Sounds"] = #sounds
+    local ok, sounds = pcall(collectSounds)
+    if ok then
+        serializer:save("08_sounds", sounds)
+        summary["Sounds"] = #sounds
+    else
+        summary["Sounds"] = "ERR"
+    end
 end
 
 -- 09) STARTERGUI
 if Config.Targets.StarterGui then
+    extractor:reset()
     local ok, guiData = pcall(function()
         return extractor:dumpContainer(StarterGui)
     end)
     if ok then
         serializer:save("09_startergui", guiData)
         summary["StarterGui"] = #guiData
+    else
+        summary["StarterGui"] = "ERR"
     end
 end
 
 -- 10) TERRAIN
 if Config.Targets.TerrainInfo then
-    local t = collectTerrainInfo()
-    serializer:save("10_terrain", t)
-    summary["Terrain"] = t.Exists and "OK" or "None"
+    local ok, t = pcall(collectTerrainInfo)
+    if ok then
+        serializer:save("10_terrain", t)
+        summary["Terrain"] = t.Exists and "OK" or "None"
+    else
+        summary["Terrain"] = "ERR"
+    end
 end
 
 -- 11) SMART SCAN
@@ -1382,23 +1543,28 @@ if Config.Targets.SmartScan then
     Utils.log("═══════════════════════════════════════")
     Utils.log("🔍 SMART SCAN")
     Utils.log("═══════════════════════════════════════")
-    smartData = SmartScan.scan()
+    local ok, sData = pcall(SmartScan.scan)
+    if ok then
+        smartData = sData
+        serializer:save("11_smart_collectibles", smartData.Collectibles)
+        serializer:save("12_smart_enemies", smartData.Enemies)
+        serializer:save("13_smart_portals", smartData.Portals)
+        serializer:save("14_smart_remotes", smartData.Remotes)
+        serializer:save("15_smart_hitboxes", smartData.Hitboxes)
+        serializer:save("16_smart_spawns", smartData.Spawns)
+        serializer:save("17_smart_anticheat", smartData.AntiCheatSuspects)
 
-    serializer:save("11_smart_collectibles", smartData.Collectibles)
-    serializer:save("12_smart_enemies", smartData.Enemies)
-    serializer:save("13_smart_portals", smartData.Portals)
-    serializer:save("14_smart_remotes", smartData.Remotes)
-    serializer:save("15_smart_hitboxes", smartData.Hitboxes)
-    serializer:save("16_smart_spawns", smartData.Spawns)
-    serializer:save("17_smart_anticheat", smartData.AntiCheatSuspects)
-
-    summary["Collectibles"] = #smartData.Collectibles
-    summary["Enemies"] = #smartData.Enemies
-    summary["Portals"] = #smartData.Portals
-    summary["Remotes"] = #smartData.Remotes
-    summary["Hitboxes"] = #smartData.Hitboxes
-    summary["Spawns"] = #smartData.Spawns
-    summary["AntiCheat"] = #smartData.AntiCheatSuspects
+        summary["Collectibles"] = #smartData.Collectibles
+        summary["Enemies"] = #smartData.Enemies
+        summary["Portals"] = #smartData.Portals
+        summary["Remotes"] = #smartData.Remotes
+        summary["Hitboxes"] = #smartData.Hitboxes
+        summary["Spawns"] = #smartData.Spawns
+        summary["AntiCheat"] = #smartData.AntiCheatSuspects
+    else
+        Utils.warn("SmartScan error: " .. tostring(sData))
+        summary["SmartScan"] = "ERR"
+    end
 end
 
 -- 18) REMOTE SNIFFER
@@ -1444,16 +1610,21 @@ if Config.Targets.Analysis and smartData then
     Utils.log("🧠 ANALYZE")
     Utils.log("═══════════════════════════════════════")
 
-    local report = Analyzer.analyze(smartData, {
-        SnifferLog = Sniffer.Log,
-        HitboxEvents = HitboxTracker.Events,
-    })
+    local ok, report = pcall(function()
+        return Analyzer.analyze(smartData, {
+            SnifferLog = Sniffer.Log,
+            HitboxEvents = HitboxTracker.Events,
+        })
+    end)
 
-    for _, h in ipairs(report.Hints) do Utils.hint(h) end
-    for _, r in ipairs(report.Risks) do Utils.warn(r) end
-
-    serializer:save("23_analysis_report", report)
-    summary["Analysis"] = "OK"
+    if ok then
+        for _, h in ipairs(report.Hints) do Utils.hint(h) end
+        for _, r in ipairs(report.Risks) do Utils.warn(r) end
+        serializer:save("23_analysis_report", report)
+        summary["Analysis"] = "OK"
+    else
+        summary["Analysis"] = "ERR"
+    end
 end
 
 -- 24) INDEX
@@ -1464,11 +1635,15 @@ local elapsed = tick() - startTime
 summary["Total Time (s)"] = string.format("%.2f", elapsed)
 summary["Total Objects"] = extractor.count
 
-Utils.printSummary(summary, "Dump V3.1 Complete")
+Utils.printSummary(summary, "Dump V3.2 Complete")
 
 Utils.log("═══════════════════════════════════════")
 Utils.log("📂 ไฟล์ทั้งหมด: " .. Config.OutputFolder)
 Utils.log("📄 ดู _INDEX_*.json")
+if not FileAPI.hasWriteSupport() then
+    Utils.warn("⚠️ โหมด memory — ดูผลที่ _G.BoomxicoDumpStore")
+    Utils.warn("   พิมพ์ใน console: for k,v in pairs(_G.BoomxicoDumpStore) do print(k, #tostring(v)) end")
+end
 if extractor.aborted then
     Utils.warn("⚠️ Dump ถูกตัดที่ MaxObjects — เพิ่ม Limits.MaxObjects ถ้าต้องการทั้งหมด")
 end
