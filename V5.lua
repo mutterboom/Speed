@@ -1,6 +1,7 @@
 -- ============================================
 -- By Boomxico | Golden Glass UI V8.5
--- FIX: Out of local registers (do...end block + table vars)
+-- FIX: Out of local registers (do...end block)
+-- UPDATE: Sync Stick UI + Hide Hotkey on Mobile + Distance Slider
 -- ============================================
 do
     if not game:IsLoaded() then game.Loaded:Wait() end
@@ -18,7 +19,7 @@ do
     local isPC = UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled
     local isMobile = UserInputService.TouchEnabled
 
-    -- ✅ รวม state ไว้ใน table เดียว (ลด local vars)
+    -- ✅ State table (ลด local vars)
     local S = {
         speedEnabled = false,
         flyEnabled = false,
@@ -35,6 +36,8 @@ do
         NAME_MAX_DIST = 800,
         espColorIndex = 1,
         STICK_DISTANCE = 3,
+        STICK_DISTANCE_MIN = 1,
+        STICK_DISTANCE_MAX = 15,
         bodyVel = nil,
         bodyGyro = nil,
         runAnimator = nil,
@@ -52,7 +55,6 @@ do
         stickHotkeyWaiting = false,
         lastToggleTime = 0,
         TOGGLE_COOLDOWN = 0.4,
-        -- spectate
         spectateTarget = nil,
         spectateEnabled = false,
         spectateYaw = 0,
@@ -62,18 +64,15 @@ do
         lastMouseY = 0,
         mouseDown = false,
         noclipBusy = false,
-        -- drag
         dragging = false,
         dragStart = nil,
         startPos = nil,
-        -- hotkey popup
         hotkeyEditTarget = nil,
         espOpen = false,
     }
 
     S.STICK_ACTION = "BoomStickHotkeyV85"
 
-    -- เก็บ UI refs ไว้ใน table
     local UI = {}
 
     S.dirs = {F=false, B=false, L=false, R=false, U=false, D=false}
@@ -89,7 +88,8 @@ do
         fly = false, flyVal = 50,
         esp = false, name = false, nameDist = 800,
         noclip = false, fpsBoost = false,
-        espColorIdx = 1, teamCheck = false
+        espColorIdx = 1, teamCheck = false,
+        stickDist = 3
     }
 
     local ESP_COLORS = {
@@ -156,7 +156,7 @@ do
         end
     end)
 
-    -- === Helpers ===
+    -- Helpers
     local function canToggle()
         local now = tick()
         if now - S.lastToggleTime < S.TOGGLE_COOLDOWN then return false end
@@ -236,12 +236,9 @@ do
 
     local function startSpeedLoop()
         if S.speedConnection then return end
-
         S.speedConnection = RunService.Heartbeat:Connect(applySpeedNow)
-
         if S.speedConn then S.speedConn:Disconnect() end
         S.speedConn = RunService.RenderStepped:Connect(applySpeedNow)
-
         if S.speedHeartbeat then S.speedHeartbeat:Disconnect() end
         S.speedHeartbeat = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
             if S.speedEnabled and not S.flyEnabled and not S.stickEnabled then
@@ -250,39 +247,26 @@ do
                 end
             end
         end)
-
         applySpeedNow()
     end
 
     local function stopSpeedLoop()
-        if S.speedConnection then
-            S.speedConnection:Disconnect()
-            S.speedConnection = nil
-        end
-        if S.speedConn then
-            S.speedConn:Disconnect()
-            S.speedConn = nil
-        end
-        if S.speedHeartbeat then
-            S.speedHeartbeat:Disconnect()
-            S.speedHeartbeat = nil
-        end
+        if S.speedConnection then S.speedConnection:Disconnect(); S.speedConnection = nil end
+        if S.speedConn then S.speedConn:Disconnect(); S.speedConn = nil end
+        if S.speedHeartbeat then S.speedHeartbeat:Disconnect(); S.speedHeartbeat = nil end
     end
 
     local function toggleSpeed()
         if not canToggle() then return end
-
         if not humanoid or not humanoid.Parent then
             warn("[Speed] Humanoid not ready")
             return
         end
-
         S.speedEnabled = not S.speedEnabled
         UI.spdBtn.Text = S.speedEnabled and "วิ่งไว: เปิด" or "วิ่งไว: ปิด"
         UI.spdBtn.BackgroundColor3 = S.speedEnabled and COLOR_ACTIVE_BG or COLOR_BG_LIGHT
         S.savedState.speed = S.speedEnabled
         S.savedState.speedVal = S.runSpeed
-
         if S.speedEnabled then
             stopSpeedLoop()
             humanoid.WalkSpeed = S.runSpeed
@@ -401,10 +385,7 @@ do
     end
 
     local function stopFly()
-        if S.flyConnection then
-            S.flyConnection:Disconnect()
-            S.flyConnection = nil
-        end
+        if S.flyConnection then S.flyConnection:Disconnect(); S.flyConnection = nil end
         if S.bodyVel then S.bodyVel:Destroy(); S.bodyVel = nil end
         if S.bodyGyro then S.bodyGyro:Destroy(); S.bodyGyro = nil end
         if S.runAnimTrack then
@@ -440,7 +421,6 @@ do
                 model = model:FindFirstAncestorOfClass("Model")
             end
         end
-
         if mouse and mouse.Hit then
             local cam = workspace.CurrentCamera
             local origin = cam.CFrame.Position
@@ -512,20 +492,16 @@ do
         if not S.stickEnabled or not S.scriptAlive then return end
         local myHRP = getHRP(player)
         if not myHRP then return end
-
         if not S.stickTarget or not getHRP(S.stickTarget) then
             S.stickTarget = getNearestPlayer()
             if not S.stickTarget then return end
             if UI.refreshStickStatus then UI.refreshStickStatus() end
         end
-
         local tgtHRP = getHRP(S.stickTarget)
         if not tgtHRP then return end
-
         local lookVec = tgtHRP.CFrame.LookVector
         local stickPos = tgtHRP.Position - (lookVec * S.STICK_DISTANCE)
         local cf = CFrame.new(stickPos, tgtHRP.Position)
-
         myHRP.CFrame = cf
         myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
@@ -539,13 +515,13 @@ do
             S.stickEnabled = false
             return
         end
-
         if S.stickConnection then
             pcall(function() S.stickConnection:Disconnect() end)
             S.stickConnection = nil
         end
         S.stickConnection = RunService.Heartbeat:Connect(stickLoop)
         print("[Stick] ON | target:", S.stickTarget.Name)
+        if UI.refreshStickUI then UI.refreshStickUI() end
         if UI.refreshStickStatus then UI.refreshStickStatus() end
     end
 
@@ -567,6 +543,7 @@ do
             end
         end
         print("[Stick] OFF")
+        if UI.refreshStickUI then UI.refreshStickUI() end
         if UI.refreshStickStatus then UI.refreshStickStatus() end
     end
 
@@ -575,12 +552,10 @@ do
         local now = tick()
         if now - S.stickLastHotkey < 0.15 then return end
         S.stickLastHotkey = now
-
         if S.stickEnabled then
             stopStick()
             return
         end
-
         local aimPlr = getPlayerFromAim() or getPlayerInSight() or getNearestPlayer()
         if aimPlr then
             startStick(aimPlr)
@@ -911,9 +886,11 @@ do
         return btn
     end
 
-    -- Stick Row
+    -- ============================================
+    -- Stick Row (มี Slider)
+    -- ============================================
     local stickRow = Instance.new("Frame")
-    stickRow.Size = UDim2.new(0.9, 0, 0, scaledSize(56))
+    stickRow.Size = UDim2.new(0.9, 0, 0, scaledSize(82))
     stickRow.BackgroundColor3 = Color3.fromRGB(20, 30, 40)
     stickRow.BackgroundTransparency = 0.4
     stickRow.LayoutOrder = 0
@@ -922,8 +899,6 @@ do
     addGlow(stickRow, 0.7, false)
 
     local stickToggleBtn = Instance.new("TextButton")
-    stickToggleBtn.Size = UDim2.new(0.65, 0, 0, scaledSize(28))
-    stickToggleBtn.Position = UDim2.new(0, 0, 0, scaledSize(4))
     stickToggleBtn.BackgroundColor3 = Color3.fromRGB(60, 90, 160)
     stickToggleBtn.BackgroundTransparency = 0.2
     stickToggleBtn.Text = "🎯 เกาะ: ปิด"
@@ -933,9 +908,15 @@ do
     stickToggleBtn.Parent = stickRow
     Instance.new("UICorner", stickToggleBtn).CornerRadius = UDim.new(0, 10)
 
+    if isPC then
+        stickToggleBtn.Size = UDim2.new(0.65, 0, 0, scaledSize(28))
+        stickToggleBtn.Position = UDim2.new(0, 0, 0, scaledSize(4))
+    else
+        stickToggleBtn.Size = UDim2.new(0.98, 0, 0, scaledSize(28))
+        stickToggleBtn.Position = UDim2.new(0.01, 0, 0, scaledSize(4))
+    end
+
     local stickHotkeyBtn = Instance.new("TextButton")
-    stickHotkeyBtn.Size = UDim2.new(0.32, 0, 0, scaledSize(28))
-    stickHotkeyBtn.Position = UDim2.new(0.68, 0, 0, scaledSize(4))
     stickHotkeyBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 60)
     stickHotkeyBtn.BackgroundTransparency = 0.2
     stickHotkeyBtn.Text = "⌨ ตั้งปุ่ม"
@@ -944,6 +925,15 @@ do
     stickHotkeyBtn.TextSize = scaledSize(10)
     stickHotkeyBtn.Parent = stickRow
     Instance.new("UICorner", stickHotkeyBtn).CornerRadius = UDim.new(0, 10)
+
+    if isPC then
+        stickHotkeyBtn.Size = UDim2.new(0.32, 0, 0, scaledSize(28))
+        stickHotkeyBtn.Position = UDim2.new(0.68, 0, 0, scaledSize(4))
+        stickHotkeyBtn.Visible = true
+    else
+        stickHotkeyBtn.Size = UDim2.new(0, 0, 0, 0)
+        stickHotkeyBtn.Visible = false
+    end
 
     local stickStatusLbl = Instance.new("TextLabel")
     stickStatusLbl.Size = UDim2.new(1, -10, 0, scaledSize(18))
@@ -957,6 +947,106 @@ do
     stickStatusLbl.TextTruncate = Enum.TextTruncate.AtEnd
     stickStatusLbl.Parent = stickRow
 
+    -- ===== Slider ระยะเกาะ =====
+    local stickSliderRow = Instance.new("Frame")
+    stickSliderRow.Size = UDim2.new(1, -10, 0, scaledSize(22))
+    stickSliderRow.Position = UDim2.new(0, 5, 0, scaledSize(56))
+    stickSliderRow.BackgroundTransparency = 1
+    stickSliderRow.Parent = stickRow
+
+    local stickDistLbl = Instance.new("TextLabel")
+    stickDistLbl.Size = UDim2.new(0.42, 0, 1, 0)
+    stickDistLbl.BackgroundTransparency = 1
+    stickDistLbl.Text = "ระยะเกาะ: 3"
+    stickDistLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
+    stickDistLbl.Font = Enum.Font.Code
+    stickDistLbl.TextSize = scaledSize(11)
+    stickDistLbl.TextXAlignment = Enum.TextXAlignment.Left
+    stickDistLbl.Parent = stickSliderRow
+
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Size = UDim2.new(0.56, 0, 0, scaledSize(6))
+    sliderBg.Position = UDim2.new(0.44, 0, 0.5, -scaledSize(3))
+    sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    sliderBg.BorderSizePixel = 0
+    sliderBg.Parent = stickSliderRow
+    Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
+
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Size = UDim2.new(0.142, 0, 1, 0)
+    sliderFill.BackgroundColor3 = COLOR_ACCENT
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = sliderBg
+    Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+
+    local sliderKnob = Instance.new("Frame")
+    sliderKnob.Size = UDim2.new(0, scaledSize(14), 0, scaledSize(14))
+    sliderKnob.Position = UDim2.new(0.142, -scaledSize(7), 0.5, -scaledSize(7))
+    sliderKnob.BackgroundColor3 = Color3.fromRGB(255, 230, 100)
+    sliderKnob.BorderSizePixel = 0
+    sliderKnob.ZIndex = 5
+    sliderKnob.Parent = sliderBg
+    Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
+
+    local sliderStroke = Instance.new("UIStroke", sliderKnob)
+    sliderStroke.Color = Color3.fromRGB(120, 90, 0)
+    sliderStroke.Thickness = 2
+
+    local sliderHitbox = Instance.new("TextButton")
+    sliderHitbox.Size = UDim2.new(1, 0, 0, scaledSize(24))
+    sliderHitbox.Position = UDim2.new(0, 0, 0.5, -scaledSize(12))
+    sliderHitbox.BackgroundTransparency = 1
+    sliderHitbox.Text = ""
+    sliderHitbox.ZIndex = 10
+    sliderHitbox.Parent = sliderBg
+
+    local sliderDragging = false
+
+    local function setStickDistance(val)
+        val = clamp(val, S.STICK_DISTANCE_MIN, S.STICK_DISTANCE_MAX)
+        S.STICK_DISTANCE = val
+        S.savedState.stickDist = val
+        local pct = (val - S.STICK_DISTANCE_MIN) / (S.STICK_DISTANCE_MAX - S.STICK_DISTANCE_MIN)
+        sliderFill.Size = UDim2.new(pct, 0, 1, 0)
+        sliderKnob.Position = UDim2.new(pct, -scaledSize(7), 0.5, -scaledSize(7))
+        local txt = tostring(val)
+        if val == math.floor(val) then txt = tostring(math.floor(val)) end
+        stickDistLbl.Text = "ระยะเกาะ: " .. txt
+    end
+    UI.setStickDistance = setStickDistance
+
+    local function updateStickSlider(inputX)
+        local barAbs = sliderBg.AbsolutePosition.X
+        local barW = sliderBg.AbsoluteSize.X
+        if barW <= 0 then return end
+        local pct = clamp((inputX - barAbs) / barW, 0, 1)
+        local val = S.STICK_DISTANCE_MIN + pct * (S.STICK_DISTANCE_MAX - S.STICK_DISTANCE_MIN)
+        val = math.floor(val * 10 + 0.5) / 10
+        setStickDistance(val)
+    end
+
+    sliderHitbox.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            sliderDragging = true
+            updateStickSlider(input.Position.X)
+        end
+    end)
+
+    sliderHitbox.InputChanged:Connect(function(input)
+        if sliderDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            updateStickSlider(input.Position.X)
+        end
+    end)
+
+    sliderHitbox.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            sliderDragging = false
+        end
+    end)
+
+    setStickDistance(S.STICK_DISTANCE)
+
+    -- ===== Refresh UI functions =====
     UI.refreshStickUI = function()
         if S.stickEnabled then
             stickToggleBtn.Text = "🎯 เกาะ: เปิด"
@@ -1002,8 +1092,6 @@ do
         else
             startStick(nil)
         end
-        UI.refreshStickUI()
-        UI.refreshStickStatus()
     end)
 
     stickHotkeyBtn.MouseButton1Click:Connect(function()
@@ -1011,7 +1099,7 @@ do
         UI.refreshStickHotkeyBtn()
     end)
 
-    -- Row 1
+    -- Row 1: Speed
     local row1 = Instance.new("Frame")
     row1.Size = UDim2.new(0.9, 0, 0, scaledSize(36))
     row1.BackgroundTransparency = 1
@@ -1049,7 +1137,7 @@ do
     addGlow(spdBox, 0.7, false)
     UI.spdBox = spdBox
 
-    -- Row 2
+    -- Row 2: Fly
     local row2 = Instance.new("Frame")
     row2.Size = UDim2.new(0.9, 0, 0, scaledSize(36))
     row2.BackgroundTransparency = 1
@@ -1087,7 +1175,7 @@ do
     addGlow(flyBox, 0.7, false)
     UI.flyBox = flyBox
 
-    -- Hotkey Row
+    -- Row 3: Hotkey (PC only)
     local hotkeyRow = Instance.new("Frame")
     hotkeyRow.Size = UDim2.new(0.9, 0, 0, scaledSize(28))
     hotkeyRow.BackgroundTransparency = 1
@@ -1345,7 +1433,7 @@ do
     closeBtn.LayoutOrder = 11
     closeBtn.TextColor3 = COLOR_TEXT_DIM
 
-    -- Pad
+    -- Pad (Mobile fly)
     local pad = Instance.new("Frame")
     pad.Size = UDim2.new(0, scaledSize(180), 0, scaledSize(180))
     pad.Position = UDim2.new(1, -scaledSize(200), 0.5, -scaledSize(90))
@@ -1389,9 +1477,7 @@ do
     end
     bind(bU, "U"); bind(bD, "D"); bind(bL, "L"); bind(bR, "R"); bind(bF, "F")
 
-    -- ============================================
     -- Toggle Fly
-    -- ============================================
     local function toggleFly()
         if not canToggle() then return end
         S.flyEnabled = not S.flyEnabled
@@ -1404,9 +1490,7 @@ do
         else
             stopFly()
         end
-    end
-
-    spdBtn.MouseButton1Click:Connect(toggleSpeed)
+    end    spdBtn.MouseButton1Click:Connect(toggleSpeed)
     flyBtn.MouseButton1Click:Connect(toggleFly)
 
     spdBox.FocusLost:Connect(function()
@@ -1434,9 +1518,7 @@ do
         S.savedState.flyVal = S.flySpeed
     end)
 
-    -- ============================================
     -- Input
-    -- ============================================
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
 
@@ -1509,9 +1591,7 @@ do
         end
     end)
 
-    -- ============================================
     -- Player List Menu
-    -- ============================================
     local checkMenu = Instance.new("Frame")
     checkMenu.Size = UDim2.new(0, scaledSize(280), 0, math.floor(math.min(410, screenY * 0.6)))
     checkMenu.Position = UDim2.new(0.5, -scaledSize(140), 0.5, -math.floor(math.min(410, screenY * 0.6) / 2))
@@ -1898,7 +1978,7 @@ do
             S.lastMouseY = input.Position.Y
         end
         if input.UserInputType == Enum.UserInputType.MouseWheel then
-            S.spectateDist = math.clamp(S.spectateDist - input.Position.Z * 2, 4, 50)
+            S.spectateDist = clamp(S.spectateDist - input.Position.Z * 2, 4, 50)
         end
     end)
 
@@ -1910,7 +1990,7 @@ do
             S.lastMouseX = input.Position.X
             S.lastMouseY = input.Position.Y
             S.spectateYaw = S.spectateYaw + dx * 0.3
-            S.spectatePitch = math.clamp(S.spectatePitch - dy * 0.3, -80, 80)
+            S.spectatePitch = clamp(S.spectatePitch - dy * 0.3, -80, 80)
         end
         if input.UserInputType == Enum.UserInputType.Touch and S.mouseDown then
             local dx = input.Position.X - S.lastMouseX
@@ -1918,7 +1998,7 @@ do
             S.lastMouseX = input.Position.X
             S.lastMouseY = input.Position.Y
             S.spectateYaw = S.spectateYaw + dx * 0.5
-            S.spectatePitch = math.clamp(S.spectatePitch - dy * 0.5, -80, 80)
+            S.spectatePitch = clamp(S.spectatePitch - dy * 0.5, -80, 80)
         end
     end)
 
@@ -2040,8 +2120,6 @@ do
                         if S.stickEnabled then stopStick() end
                         startStick(p)
                     end
-                    UI.refreshStickUI()
-                    UI.refreshStickStatus()
                     refreshPlayerList()
                 end)
 
@@ -2150,8 +2228,6 @@ do
         if S.spectateTarget == p then stopSpectate() end
         if S.stickTarget == p then
             stopStick()
-            UI.refreshStickUI()
-            UI.refreshStickStatus()
         end
         for i = #espObjects, 1, -1 do
             if espObjects[i].player == p then
@@ -2273,6 +2349,10 @@ do
             fpsBoostBtn.Text = "FPS Boost: เปิด"
             fpsBoostBtn.BackgroundColor3 = COLOR_ACTIVE_BG
             enableFPSBoost()
+        end
+        -- กู้ระยะเกาะ
+        if S.savedState.stickDist and UI.setStickDistance then
+            UI.setStickDistance(S.savedState.stickDist)
         end
         for k in pairs(S.dirs) do S.dirs[k] = false end
     end)
