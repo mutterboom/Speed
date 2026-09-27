@@ -1,9 +1,11 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Ghost Stick V3 | Hide + Stick + Aim/List + Hotkey + Spectate ║
+-- ║  Ghost Stick V4 | Hide + Stick + Aim/List + Hotkey + Camera   ║
 -- ║  - ซ่อนตัวเองเฉพาะ client (LocalTransparencyModifier)         ║
 -- ║  - เกาะใต้+หลังเป้า ปรับระยะได้                                ║
--- ║  - กล้อง Spectate แบบ Boomxico V8.5                           ║
--- ║  - เลือกเป้าจาก aim หรือ list + Hotkey                        ║
+-- ║  - กล้อง Spectate แบบ Boomxico V8.5 + Smooth (แก้สั่น)        ║
+-- ║  - ปุ่มยกเลิกกล้อง (Ghost ยังทำงาน)                            ║
+-- ║  - Preset กล้อง 8 แบบ (สเปคจอ)                                 ║
+-- ║  - Smooth camera ปรับได้ 5 ระดับ                              ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 do
     local Players = game:GetService("Players")
@@ -47,7 +49,7 @@ do
         hotkey = nil,
         hotkeyWaiting = false,
         lastHotkeyTime = 0,
-        HOTKEY_ACTION = "GhostStick_Hotkey_V3",
+        HOTKEY_ACTION = "GhostStick_Hotkey_V4",
 
         -- Spectate
         spectateYaw = 0,
@@ -57,6 +59,8 @@ do
         spectateLastMouseX = 0,
         spectateLastMouseY = 0,
         spectateBound = false,
+        spectateSmooth = 0.25,
+        spectateActive = true,
 
         mode = "aim",
     }
@@ -238,10 +242,11 @@ do
     end
 
     -- ═══════════════════════════════════════════
-    -- SPECTATE CAMERA
+    -- SPECTATE CAMERA (Smooth)
     -- ═══════════════════════════════════════════
     local function spectateUpdate(dt)
         if not S.enabled or not S.alive then return end
+        if not S.spectateActive then return end
         if not S.target then return end
 
         local targetChar = S.target.Character
@@ -262,7 +267,25 @@ do
         )
 
         local camPos = targetHead.Position + offset
-        cam.CFrame = CFrame.new(camPos, targetHead.Position)
+        local targetCF = CFrame.new(camPos, targetHead.Position)
+
+        local smooth = S.spectateSmooth
+        if smooth >= 1 then
+            cam.CFrame = targetCF
+        else
+            cam.CFrame = cam.CFrame:Lerp(targetCF, smooth)
+        end
+
+        -- ลดสั่นระยะใกล้: ใช้ HumanoidRootPart
+        if S.spectateDist < 6 then
+            local tgtHRP = targetChar:FindFirstChild("HumanoidRootPart")
+            if tgtHRP then
+                local posStable = tgtHRP.Position + Vector3.new(0, 1.5, 0)
+                local camPos2 = posStable + offset
+                local stableCF = CFrame.new(camPos2, posStable)
+                cam.CFrame = cam.CFrame:Lerp(stableCF, smooth * 0.8)
+            end
+        end
     end
 
     local function stopSpectate()
@@ -274,6 +297,47 @@ do
                 if myHum then cam.CameraSubject = myHum end
             end
         end
+    end
+
+    local function disableSpectate()
+        S.spectateActive = false
+        stopSpectate()
+        if UI.refreshAll then UI.refreshAll() end
+    end
+
+    local function enableSpectate()
+        S.spectateActive = true
+        if UI.refreshAll then UI.refreshAll() end
+    end
+
+    -- Preset กล้อง
+    local SPECTATE_PRESETS = {
+        {name = "ปิดกล้อง",  dist = 0,   pitch = 0,   yaw = 0},
+        {name = "ใกล้",     dist = 6,   pitch = -10, yaw = 0},
+        {name = "กลาง",     dist = 12,  pitch = -10, yaw = 0},
+        {name = "ไกล",      dist = 20,  pitch = -15, yaw = 0},
+        {name = "หลังบน",   dist = 15,  pitch = -30, yaw = 0},
+        {name = "ข้างขวา",  dist = 12,  pitch = -10, yaw = 90},
+        {name = "ข้างซ้าย", dist = 12,  pitch = -10, yaw = -90},
+        {name = "หน้า",     dist = 12,  pitch = -10, yaw = 180},
+    }
+
+    local currentPresetIdx = 0
+
+    local function applyPreset(idx)
+        local p = SPECTATE_PRESETS[idx]
+        if not p then return end
+        currentPresetIdx = idx
+        if p.dist == 0 then
+            disableSpectate()
+            if UI.refreshPresets then UI.refreshPresets(idx) end
+            return
+        end
+        enableSpectate()
+        S.spectateDist = p.dist
+        S.spectatePitch = p.pitch
+        S.spectateYaw = p.yaw
+        if UI.refreshPresets then UI.refreshPresets(idx) end
     end
 
     -- ═══════════════════════════════════════════
@@ -293,10 +357,13 @@ do
         if S.stickConn then S.stickConn:Disconnect() end
         S.stickConn = RunService.RenderStepped:Connect(stickLoop)
 
-        -- Spectate
+        -- Spectate default
+        S.spectateActive = true
         S.spectateYaw = 0
         S.spectatePitch = -10
         S.spectateDist = 12
+        S.spectateSmooth = 0.25
+        currentPresetIdx = 3
         if not S.spectateBound then
             RunService:BindToRenderStep(
                 "GhostStickSpectate",
@@ -347,18 +414,19 @@ do
     -- UI
     -- ═══════════════════════════════════════════
     local gui = Instance.new("ScreenGui")
-    gui.Name = "GhostStickUI_V3"
+    gui.Name = "GhostStickUI_V4"
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.Parent = LP:WaitForChild("PlayerGui")
     UI.gui = gui
 
-    local mainW = sz(280)
-    local mainH = sz(520)
+    local mainW = sz(300)
+    local mainH = sz(600)
+    local mainHExpanded = sz(740)  -- ตอนเปิด preset
 
     local main = Instance.new("Frame")
     main.Size = UDim2.new(0, mainW, 0, mainH)
-    main.Position = UDim2.new(0, 20, 0, 60)
+    main.Position = UDim2.new(0, 20, 0, 40)
     main.BackgroundColor3 = Color3.fromRGB(10, 8, 18)
     main.BackgroundTransparency = 0.1
     main.BorderSizePixel = 0
@@ -376,7 +444,7 @@ do
     title.Size = UDim2.new(1, -20, 0, sz(34))
     title.Position = UDim2.new(0, 10, 0, sz(6))
     title.BackgroundTransparency = 1
-    title.Text = "👻 GHOST STICK V3"
+    title.Text = "👻 GHOST STICK V4"
     title.TextColor3 = Color3.fromRGB(200, 170, 255)
     title.Font = Enum.Font.GothamBold
     title.TextSize = sz(16)
@@ -526,10 +594,130 @@ do
     sliderHitbox2.ZIndex = 10
     sliderHitbox2.Parent = sliderBg2
 
-    -- List
+    -- ===== Spectate Controls =====
+    local specLabel = Instance.new("TextLabel")
+    specLabel.Size = UDim2.new(1, -20, 0, sz(16))
+    specLabel.Position = UDim2.new(0, 10, 0, sz(258))
+    specLabel.BackgroundTransparency = 1
+    specLabel.Text = "🎥 กล้อง Spectate"
+    specLabel.TextColor3 = Color3.fromRGB(180, 200, 255)
+    specLabel.Font = Enum.Font.GothamBold
+    specLabel.TextSize = sz(11)
+    specLabel.TextXAlignment = Enum.TextXAlignment.Left
+    specLabel.Parent = main
+
+    local toggleSpectateBtn = Instance.new("TextButton")
+    toggleSpectateBtn.Size = UDim2.new(0.48, 0, 0, sz(28))
+    toggleSpectateBtn.Position = UDim2.new(0, 10, 0, sz(278))
+    toggleSpectateBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 90)
+    toggleSpectateBtn.BorderSizePixel = 0
+    toggleSpectateBtn.Text = "🎥 ปิดกล้อง"
+    toggleSpectateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleSpectateBtn.Font = Enum.Font.GothamBold
+    toggleSpectateBtn.TextSize = sz(11)
+    toggleSpectateBtn.Parent = main
+    Instance.new("UICorner", toggleSpectateBtn).CornerRadius = UDim.new(0, 6)
+    UI.toggleSpectateBtn = toggleSpectateBtn
+
+    local smoothBtn = Instance.new("TextButton")
+    smoothBtn.Size = UDim2.new(0.48, 0, 0, sz(28))
+    smoothBtn.Position = UDim2.new(0.52, 0, 0, sz(278))
+    smoothBtn.BackgroundColor3 = Color3.fromRGB(80, 90, 140)
+    smoothBtn.BorderSizePixel = 0
+    smoothBtn.Text = "✨ นุ่ม: 0.25"
+    smoothBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    smoothBtn.Font = Enum.Font.GothamBold
+    smoothBtn.TextSize = sz(11)
+    smoothBtn.Parent = main
+    Instance.new("UICorner", smoothBtn).CornerRadius = UDim.new(0, 6)
+    UI.smoothBtn = smoothBtn
+
+    -- ปุ่ม สเปคจอ
+    local presetOpenBtn = Instance.new("TextButton")
+    presetOpenBtn.Size = UDim2.new(1, -20, 0, sz(28))
+    presetOpenBtn.Position = UDim2.new(0, 10, 0, sz(312))
+    presetOpenBtn.BackgroundColor3 = Color3.fromRGB(70, 80, 120)
+    presetOpenBtn.BorderSizePixel = 0
+    presetOpenBtn.Text = "📐 สเปคจอ (แสดง)"
+    presetOpenBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+    presetOpenBtn.Font = Enum.Font.GothamBold
+    presetOpenBtn.TextSize = sz(11)
+    presetOpenBtn.Parent = main
+    Instance.new("UICorner", presetOpenBtn).CornerRadius = UDim.new(0, 6)
+    UI.presetOpenBtn = presetOpenBtn
+
+    -- Preset Grid
+    local presetFrame = Instance.new("Frame")
+    presetFrame.Size = UDim2.new(1, -20, 0, sz(94))
+    presetFrame.Position = UDim2.new(0, 10, 0, sz(346))
+    presetFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    presetFrame.BackgroundTransparency = 0.4
+    presetFrame.BorderSizePixel = 0
+    presetFrame.Visible = false
+    presetFrame.Parent = main
+    Instance.new("UICorner", presetFrame).CornerRadius = UDim.new(0, 8)
+
+    local presetPad = Instance.new("UIPadding", presetFrame)
+    presetPad.PaddingTop = UDim.new(0, 6)
+    presetPad.PaddingLeft = UDim.new(0, 6)
+    presetPad.PaddingRight = UDim.new(0, 6)
+    presetPad.PaddingBottom = UDim.new(0, 6)
+
+    local presetGrid = Instance.new("UIGridLayout", presetFrame)
+    presetGrid.CellSize = UDim2.new(0, sz(80), 0, sz(24))
+    presetGrid.CellPadding = UDim2.new(0, 4, 0, 4)
+    presetGrid.SortOrder = Enum.SortOrder.LayoutOrder
+    presetGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+    local presetButtons = {}
+    for i, preset in ipairs(SPECTATE_PRESETS) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, sz(80), 0, sz(24))
+        btn.BackgroundColor3 = Color3.fromRGB(50, 60, 90)
+        btn.BorderSizePixel = 0
+        btn.Text = preset.name
+        btn.TextColor3 = Color3.fromRGB(220, 220, 255)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = sz(10)
+        btn.LayoutOrder = i
+        btn.Parent = presetFrame
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+        presetButtons[i] = btn
+
+        btn.MouseButton1Click:Connect(function()
+            applyPreset(i)
+        end)
+    end
+
+    UI.refreshPresets = function(activeIdx)
+        for i, btn in ipairs(presetButtons) do
+            if i == activeIdx and S.spectateActive then
+                btn.BackgroundColor3 = Color3.fromRGB(80, 140, 90)
+                btn.TextColor3 = Color3.fromRGB(255, 255, 200)
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(50, 60, 90)
+                btn.TextColor3 = Color3.fromRGB(220, 220, 255)
+            end
+        end
+    end
+
+    local presetOpen = false
+    presetOpenBtn.MouseButton1Click:Connect(function()
+        presetOpen = not presetOpen
+        presetFrame.Visible = presetOpen
+        if presetOpen then
+            presetOpenBtn.Text = "📐 สเปคจอ (ซ่อน)"
+            presetOpenBtn.BackgroundColor3 = Color3.fromRGB(90, 70, 140)
+        else
+            presetOpenBtn.Text = "📐 สเปคจอ (แสดง)"
+            presetOpenBtn.BackgroundColor3 = Color3.fromRGB(70, 80, 120)
+        end
+    end)
+
+    -- ===== List =====
     local listTitle = Instance.new("TextLabel")
     listTitle.Size = UDim2.new(1, -20, 0, sz(18))
-    listTitle.Position = UDim2.new(0, 10, 0, sz(256))
+    listTitle.Position = UDim2.new(0, 10, 0, sz(450))
     listTitle.BackgroundTransparency = 1
     listTitle.Text = "👥 เลือกเป้า (คลิกเพื่อเกาะ)"
     listTitle.TextColor3 = Color3.fromRGB(180, 200, 255)
@@ -539,8 +727,8 @@ do
     listTitle.Parent = main
 
     local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1, -20, 0, sz(180))
-    scroll.Position = UDim2.new(0, 10, 0, sz(278))
+    scroll.Size = UDim2.new(1, -20, 0, sz(100))
+    scroll.Position = UDim2.new(0, 10, 0, sz(472))
     scroll.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     scroll.BackgroundTransparency = 0.6
     scroll.BorderSizePixel = 0
@@ -709,6 +897,17 @@ do
         end
     end
 
+    function UI.refreshSpectate()
+        if S.spectateActive then
+            UI.toggleSpectateBtn.Text = "🎥 ปิดกล้อง"
+            UI.toggleSpectateBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 90)
+        else
+            UI.toggleSpectateBtn.Text = "🎥 เปิดกล้อง"
+            UI.toggleSpectateBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 60)
+        end
+        UI.smoothBtn.Text = string.format("✨ นุ่ม: %.2f", S.spectateSmooth)
+    end
+
     function UI.refreshList()
         for _, c in ipairs(scroll:GetChildren()) do
             if c:IsA("TextButton") or c:IsA("Frame") then
@@ -794,6 +993,7 @@ do
         UI.refreshStatus()
         UI.refreshHotkey()
         UI.refreshList()
+        UI.refreshSpectate()
     end
 
     -- ═══════════════════════════════════════════
@@ -862,12 +1062,30 @@ do
         UI.refreshList()
     end)
 
+    toggleSpectateBtn.MouseButton1Click:Connect(function()
+        if S.spectateActive then
+            disableSpectate()
+        else
+            enableSpectate()
+        end
+    end)
+
+    local smoothLevels = {0.15, 0.25, 0.4, 0.6, 1.0}
+    local smoothIdx = 2
+    smoothBtn.MouseButton1Click:Connect(function()
+        smoothIdx = smoothIdx + 1
+        if smoothIdx > #smoothLevels then smoothIdx = 1 end
+        S.spectateSmooth = smoothLevels[smoothIdx]
+        UI.refreshSpectate()
+    end)
+
     -- ═══════════════════════════════════════════
-    -- SPECTATE INPUT (Mouse drag + Zoom)
+    -- SPECTATE INPUT
     -- ═══════════════════════════════════════════
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
         if not S.enabled or not S.alive then return end
+        if not S.spectateActive then return end
 
         if input.UserInputType == Enum.UserInputType.MouseButton2 then
             S.spectateMouseDown = true
@@ -881,11 +1099,14 @@ do
         end
         if input.UserInputType == Enum.UserInputType.MouseWheel then
             S.spectateDist = clamp(S.spectateDist - input.Position.Z * 2, 4, 50)
+            currentPresetIdx = 0
+            if UI.refreshPresets then UI.refreshPresets(0) end
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
         if not S.enabled or not S.alive then return end
+        if not S.spectateActive then return end
         if not S.spectateMouseDown then return end
 
         if input.UserInputType == Enum.UserInputType.MouseMovement then
@@ -895,6 +1116,7 @@ do
             S.spectateLastMouseY = input.Position.Y
             S.spectateYaw = S.spectateYaw + dx * 0.3
             S.spectatePitch = clamp(S.spectatePitch - dy * 0.3, -80, 80)
+            currentPresetIdx = 0
         end
         if input.UserInputType == Enum.UserInputType.Touch then
             local dx = input.Position.X - S.spectateLastMouseX
@@ -903,6 +1125,7 @@ do
             S.spectateLastMouseY = input.Position.Y
             S.spectateYaw = S.spectateYaw + dx * 0.5
             S.spectatePitch = clamp(S.spectatePitch - dy * 0.5, -80, 80)
+            currentPresetIdx = 0
         end
     end)
 
@@ -968,5 +1191,5 @@ do
     -- INIT
     -- ═══════════════════════════════════════════
     UI.refreshAll()
-    print("[Ghost Stick V3] โหลดเสร็จ")
+    print("[Ghost Stick V4] โหลดเสร็จ")
 end
