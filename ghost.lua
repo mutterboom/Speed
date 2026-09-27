@@ -1,11 +1,12 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Ghost Stick V4 | Hide + Stick + Aim/List + Hotkey + Camera   ║
--- ║  - ซ่อนตัวเองเฉพาะ client (LocalTransparencyModifier)         ║
--- ║  - เกาะใต้+หลังเป้า ปรับระยะได้                                ║
--- ║  - กล้อง Spectate แบบ Boomxico V8.5 + Smooth (แก้สั่น)        ║
--- ║  - ปุ่มยกเลิกกล้อง (Ghost ยังทำงาน)                            ║
--- ║  - Preset กล้อง 8 แบบ (สเปคจอ)                                 ║
--- ║  - Smooth camera ปรับได้ 5 ระดับ                              ║
+-- ║  Ghost Stick V5 | Hide + Stick + Camera + Auto UI             ║
+-- ║  - ซ่อนตัวเองเฉพาะ client                                     ║
+-- ║  - เกาะใต้+หลังเป้า ปรับได้                                   ║
+-- ║  - กล้อง Spectate + Smooth (แก้สั่น)                          ║
+-- ║  - Preset กล้อง 8 แบบ                                          ║
+-- ║  - ปุ่ม พับ / ปิดสคริปต์                                      ║
+-- ║  - Auto UI Scale (PC / Mobile / Tablet)                       ║
+-- ║  - ซ่อน Hotkey บน Mobile                                      ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 do
     local Players = game:GetService("Players")
@@ -16,12 +17,54 @@ do
     local LP = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
 
-    -- Device
+    -- ═══════════════════════════════════════════
+    -- DEVICE DETECTION + AUTO UI SCALE
+    -- ═══════════════════════════════════════════
     local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
     local isPC = UserInputService.KeyboardEnabled
+    local isConsole = UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled
 
-    local uiScale = isMobile and 0.85 or 1.0
+    local viewport = Camera.ViewportSize
+    local screenX = viewport.X
+    local screenY = viewport.Y
+    local minSide = math.min(screenX, screenY)
+
+    local deviceType = "PC"
+    local uiScale = 1.0
+
+    if isMobile then
+        if minSide < 380 then
+            deviceType = "Mobile-Small"
+            uiScale = 0.65
+        elseif minSide < 450 then
+            deviceType = "Mobile-Mid"
+            uiScale = 0.78
+        elseif minSide < 600 then
+            deviceType = "Mobile-Large"
+            uiScale = 0.88
+        else
+            deviceType = "Tablet"
+            uiScale = 0.95
+        end
+    elseif isConsole then
+        deviceType = "Console"
+        uiScale = 1.1
+    else
+        -- PC: ปรับตามความสูงจอ
+        if screenY < 700 then
+            uiScale = 0.85
+        elseif screenY < 900 then
+            uiScale = 0.95
+        elseif screenY < 1200 then
+            uiScale = 1.0
+        else
+            uiScale = 1.15
+        end
+    end
+
     local function sz(px) return math.floor(px * uiScale) end
+
+    print("[Ghost V5] Device:", deviceType, "| Scale:", uiScale, "| Screen:", screenX, "x", screenY)
 
     -- ล้าง GUI เก่า
     pcall(function()
@@ -38,6 +81,7 @@ do
         target = nil,
         stickConn = nil,
         alive = true,
+        collapsed = false,
 
         distance = 3,
         backOffset = 2,
@@ -49,9 +93,8 @@ do
         hotkey = nil,
         hotkeyWaiting = false,
         lastHotkeyTime = 0,
-        HOTKEY_ACTION = "GhostStick_Hotkey_V4",
+        HOTKEY_ACTION = "GhostStick_Hotkey_V5",
 
-        -- Spectate
         spectateYaw = 0,
         spectatePitch = -10,
         spectateDist = 12,
@@ -242,7 +285,7 @@ do
     end
 
     -- ═══════════════════════════════════════════
-    -- SPECTATE CAMERA (Smooth)
+    -- SPECTATE CAMERA
     -- ═══════════════════════════════════════════
     local function spectateUpdate(dt)
         if not S.enabled or not S.alive then return end
@@ -276,7 +319,6 @@ do
             cam.CFrame = cam.CFrame:Lerp(targetCF, smooth)
         end
 
-        -- ลดสั่นระยะใกล้: ใช้ HumanoidRootPart
         if S.spectateDist < 6 then
             local tgtHRP = targetChar:FindFirstChild("HumanoidRootPart")
             if tgtHRP then
@@ -310,7 +352,6 @@ do
         if UI.refreshAll then UI.refreshAll() end
     end
 
-    -- Preset กล้อง
     local SPECTATE_PRESETS = {
         {name = "ปิดกล้อง",  dist = 0,   pitch = 0,   yaw = 0},
         {name = "ใกล้",     dist = 6,   pitch = -10, yaw = 0},
@@ -357,7 +398,6 @@ do
         if S.stickConn then S.stickConn:Disconnect() end
         S.stickConn = RunService.RenderStepped:Connect(stickLoop)
 
-        -- Spectate default
         S.spectateActive = true
         S.spectateYaw = 0
         S.spectatePitch = -10
@@ -411,10 +451,43 @@ do
     end
 
     -- ═══════════════════════════════════════════
+    -- SHUTDOWN (ปิดสคริปต์ทั้งหมด)
+    -- ═══════════════════════════════════════════
+    local function shutdown()
+        S.alive = false
+        -- ปิด Ghost
+        if S.enabled then
+            S.enabled = false
+            if S.stickConn then
+                pcall(function() S.stickConn:Disconnect() end)
+                S.stickConn = nil
+            end
+            if S.spectateBound then
+                pcall(function()
+                    RunService:UnbindFromRenderStep("GhostStickSpectate")
+                end)
+                S.spectateBound = false
+            end
+            stopSpectate()
+            restoreCharacter()
+        end
+        -- ลบ hotkey
+        pcall(function() ContextActionService:UnbindAction(S.HOTKEY_ACTION) end)
+        -- ลบ GUI
+        if UI.gui then
+            pcall(function()
+                UI.gui:Destroy()
+            end)
+            UI.gui = nil
+        end
+        print("[Ghost] ปิดสคริปต์เรียบร้อย")
+    end
+
+    -- ═══════════════════════════════════════════
     -- UI
     -- ═══════════════════════════════════════════
     local gui = Instance.new("ScreenGui")
-    gui.Name = "GhostStickUI_V4"
+    gui.Name = "GhostStickUI_V5"
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.Parent = LP:WaitForChild("PlayerGui")
@@ -422,7 +495,8 @@ do
 
     local mainW = sz(300)
     local mainH = sz(600)
-    local mainHExpanded = sz(740)  -- ตอนเปิด preset
+    local collapsedW = sz(180)
+    local collapsedH = sz(36)
 
     local main = Instance.new("Frame")
     main.Size = UDim2.new(0, mainW, 0, mainH)
@@ -434,65 +508,125 @@ do
     main.Draggable = true
     main.Parent = gui
     Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+    UI.main = main
 
     local stroke = Instance.new("UIStroke", main)
     stroke.Color = Color3.fromRGB(150, 100, 255)
     stroke.Thickness = 1.5
 
-    -- Title
+    -- Title Bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, sz(36))
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundTransparency = 1
+    titleBar.Active = true
+    titleBar.Parent = main
+    UI.titleBar = titleBar
+
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -20, 0, sz(34))
-    title.Position = UDim2.new(0, 10, 0, sz(6))
+    title.Size = UDim2.new(1, -sz(150), 0, sz(34))
+    title.Position = UDim2.new(0, sz(10), 0, sz(1))
     title.BackgroundTransparency = 1
-    title.Text = "👻 GHOST STICK V4"
+    title.Text = "👻 GHOST V5"
     title.TextColor3 = Color3.fromRGB(200, 170, 255)
     title.Font = Enum.Font.GothamBold
-    title.TextSize = sz(16)
+    title.TextSize = sz(15)
     title.TextXAlignment = Enum.TextXAlignment.Left
-    title.Parent = main
+    title.Parent = titleBar
+    UI.title = title
+
+    -- Collapse Button
+    local collapseBtn = Instance.new("TextButton")
+    collapseBtn.Size = UDim2.new(0, sz(30), 0, sz(28))
+    collapseBtn.Position = UDim2.new(1, -sz(106), 0, sz(4))
+    collapseBtn.BackgroundColor3 = Color3.fromRGB(90, 120, 70)
+    collapseBtn.BorderSizePixel = 0
+    collapseBtn.Text = "▼"
+    collapseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    collapseBtn.Font = Enum.Font.GothamBold
+    collapseBtn.TextSize = sz(14)
+    collapseBtn.Parent = titleBar
+    Instance.new("UICorner", collapseBtn).CornerRadius = UDim.new(0, 6)
+    UI.collapseBtn = collapseBtn
+
+    -- Kill Button
+    local killBtn = Instance.new("TextButton")
+    killBtn.Size = UDim2.new(0, sz(30), 0, sz(28))
+    killBtn.Position = UDim2.new(1, -sz(72), 0, sz(4))
+    killBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
+    killBtn.BorderSizePixel = 0
+    killBtn.Text = "✕"
+    killBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    killBtn.Font = Enum.Font.GothamBold
+    killBtn.TextSize = sz(14)
+    killBtn.Parent = titleBar
+    Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 6)
+    UI.killBtn = killBtn
+
+    -- Minimize Toggle (ย่อเหลือเล็ก)
+    local minimizeBtn = Instance.new("TextButton")
+    minimizeBtn.Size = UDim2.new(0, sz(30), 0, sz(28))
+    minimizeBtn.Position = UDim2.new(1, -sz(36), 0, sz(4))
+    minimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
+    minimizeBtn.BorderSizePixel = 0
+    minimizeBtn.Text = "−"
+    minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minimizeBtn.Font = Enum.Font.GothamBold
+    minimizeBtn.TextSize = sz(14)
+    minimizeBtn.Parent = titleBar
+    Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 6)
+    UI.minimizeBtn = minimizeBtn
+
+    -- ===== BODY (จะถูกซ่อนตอน collapsed) =====
+    local body = Instance.new("Frame")
+    body.Size = UDim2.new(1, 0, 1, -sz(36))
+    body.Position = UDim2.new(0, 0, 0, sz(36))
+    body.BackgroundTransparency = 1
+    body.Parent = main
+    UI.body = body
 
     local statusLbl = Instance.new("TextLabel")
     statusLbl.Size = UDim2.new(1, -20, 0, sz(18))
-    statusLbl.Position = UDim2.new(0, 10, 0, sz(42))
+    statusLbl.Position = UDim2.new(0, 10, 0, sz(6))
     statusLbl.BackgroundTransparency = 1
     statusLbl.Text = "● ปิด"
     statusLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
     statusLbl.Font = Enum.Font.Code
     statusLbl.TextSize = sz(12)
     statusLbl.TextXAlignment = Enum.TextXAlignment.Left
-    statusLbl.Parent = main
+    statusLbl.Parent = body
     UI.statusLbl = statusLbl
 
     local targetLbl = Instance.new("TextLabel")
     targetLbl.Size = UDim2.new(1, -20, 0, sz(18))
-    targetLbl.Position = UDim2.new(0, 10, 0, sz(62))
+    targetLbl.Position = UDim2.new(0, 10, 0, sz(26))
     targetLbl.BackgroundTransparency = 1
     targetLbl.Text = "🎯 เป้า: -"
     targetLbl.TextColor3 = Color3.fromRGB(255, 220, 100)
     targetLbl.Font = Enum.Font.Code
     targetLbl.TextSize = sz(12)
     targetLbl.TextXAlignment = Enum.TextXAlignment.Left
-    targetLbl.Parent = main
+    targetLbl.Parent = body
     UI.targetLbl = targetLbl
 
     -- Toggle Button
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(1, -20, 0, sz(36))
-    toggleBtn.Position = UDim2.new(0, 10, 0, sz(88))
+    toggleBtn.Position = UDim2.new(0, 10, 0, sz(52))
     toggleBtn.BackgroundColor3 = Color3.fromRGB(80, 40, 130)
     toggleBtn.BorderSizePixel = 0
     toggleBtn.Text = "👻 เปิด Ghost (Aim)"
     toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     toggleBtn.Font = Enum.Font.GothamBold
     toggleBtn.TextSize = sz(13)
-    toggleBtn.Parent = main
+    toggleBtn.Parent = body
     Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
     UI.toggleBtn = toggleBtn
 
-    -- Hotkey Button
+    -- Hotkey Button (PC only)
     local hotkeyBtn = Instance.new("TextButton")
     hotkeyBtn.Size = UDim2.new(1, -20, 0, sz(32))
-    hotkeyBtn.Position = UDim2.new(0, 10, 0, sz(130))
+    hotkeyBtn.Position = UDim2.new(0, 10, 0, sz(94))
     hotkeyBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 60)
     hotkeyBtn.BorderSizePixel = 0
     hotkeyBtn.Text = "⌨ ตั้งปุ่ม Hotkey"
@@ -500,29 +634,32 @@ do
     hotkeyBtn.Font = Enum.Font.GothamBold
     hotkeyBtn.TextSize = sz(12)
     hotkeyBtn.Visible = isPC
-    hotkeyBtn.Parent = main
+    hotkeyBtn.Parent = body
     Instance.new("UICorner", hotkeyBtn).CornerRadius = UDim.new(0, 8)
     UI.hotkeyBtn = hotkeyBtn
+
+    -- Adjust layout based on device
+    local sliderStartY = isPC and sz(134) or sz(94)
 
     -- Slider: ระยะใต้
     local distLbl = Instance.new("TextLabel")
     distLbl.Size = UDim2.new(1, -20, 0, sz(18))
-    distLbl.Position = UDim2.new(0, 10, 0, sz(170))
+    distLbl.Position = UDim2.new(0, 10, 0, sliderStartY)
     distLbl.BackgroundTransparency = 1
     distLbl.Text = "📏 ใต้เป้า: 3.0 studs"
     distLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
     distLbl.Font = Enum.Font.Code
     distLbl.TextSize = sz(12)
     distLbl.TextXAlignment = Enum.TextXAlignment.Left
-    distLbl.Parent = main
+    distLbl.Parent = body
     UI.distLbl = distLbl
 
     local sliderBg = Instance.new("Frame")
     sliderBg.Size = UDim2.new(1, -20, 0, sz(8))
-    sliderBg.Position = UDim2.new(0, 10, 0, sz(192))
+    sliderBg.Position = UDim2.new(0, 10, 0, sliderStartY + sz(22))
     sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
     sliderBg.BorderSizePixel = 0
-    sliderBg.Parent = main
+    sliderBg.Parent = body
     Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
 
     local sliderFill = Instance.new("Frame")
@@ -552,22 +689,22 @@ do
     -- Slider: Offset หลัง
     local offLbl = Instance.new("TextLabel")
     offLbl.Size = UDim2.new(1, -20, 0, sz(18))
-    offLbl.Position = UDim2.new(0, 10, 0, sz(216))
+    offLbl.Position = UDim2.new(0, 10, 0, sliderStartY + sz(46))
     offLbl.BackgroundTransparency = 1
     offLbl.Text = "↩ หลังเป้า: 2.0 studs"
     offLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
     offLbl.Font = Enum.Font.Code
     offLbl.TextSize = sz(12)
     offLbl.TextXAlignment = Enum.TextXAlignment.Left
-    offLbl.Parent = main
+    offLbl.Parent = body
     UI.offLbl = offLbl
 
     local sliderBg2 = Instance.new("Frame")
     sliderBg2.Size = UDim2.new(1, -20, 0, sz(8))
-    sliderBg2.Position = UDim2.new(0, 10, 0, sz(238))
+    sliderBg2.Position = UDim2.new(0, 10, 0, sliderStartY + sz(68))
     sliderBg2.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
     sliderBg2.BorderSizePixel = 0
-    sliderBg2.Parent = main
+    sliderBg2.Parent = body
     Instance.new("UICorner", sliderBg2).CornerRadius = UDim.new(1, 0)
 
     local sliderFill2 = Instance.new("Frame")
@@ -597,65 +734,64 @@ do
     -- ===== Spectate Controls =====
     local specLabel = Instance.new("TextLabel")
     specLabel.Size = UDim2.new(1, -20, 0, sz(16))
-    specLabel.Position = UDim2.new(0, 10, 0, sz(258))
+    specLabel.Position = UDim2.new(0, 10, 0, sliderStartY + sz(88))
     specLabel.BackgroundTransparency = 1
     specLabel.Text = "🎥 กล้อง Spectate"
     specLabel.TextColor3 = Color3.fromRGB(180, 200, 255)
     specLabel.Font = Enum.Font.GothamBold
     specLabel.TextSize = sz(11)
     specLabel.TextXAlignment = Enum.TextXAlignment.Left
-    specLabel.Parent = main
+    specLabel.Parent = body
 
     local toggleSpectateBtn = Instance.new("TextButton")
     toggleSpectateBtn.Size = UDim2.new(0.48, 0, 0, sz(28))
-    toggleSpectateBtn.Position = UDim2.new(0, 10, 0, sz(278))
+    toggleSpectateBtn.Position = UDim2.new(0, 10, 0, sliderStartY + sz(108))
     toggleSpectateBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 90)
     toggleSpectateBtn.BorderSizePixel = 0
     toggleSpectateBtn.Text = "🎥 ปิดกล้อง"
     toggleSpectateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     toggleSpectateBtn.Font = Enum.Font.GothamBold
     toggleSpectateBtn.TextSize = sz(11)
-    toggleSpectateBtn.Parent = main
+    toggleSpectateBtn.Parent = body
     Instance.new("UICorner", toggleSpectateBtn).CornerRadius = UDim.new(0, 6)
     UI.toggleSpectateBtn = toggleSpectateBtn
 
     local smoothBtn = Instance.new("TextButton")
     smoothBtn.Size = UDim2.new(0.48, 0, 0, sz(28))
-    smoothBtn.Position = UDim2.new(0.52, 0, 0, sz(278))
+    smoothBtn.Position = UDim2.new(0.52, 0, 0, sliderStartY + sz(108))
     smoothBtn.BackgroundColor3 = Color3.fromRGB(80, 90, 140)
     smoothBtn.BorderSizePixel = 0
     smoothBtn.Text = "✨ นุ่ม: 0.25"
     smoothBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     smoothBtn.Font = Enum.Font.GothamBold
     smoothBtn.TextSize = sz(11)
-    smoothBtn.Parent = main
+    smoothBtn.Parent = body
     Instance.new("UICorner", smoothBtn).CornerRadius = UDim.new(0, 6)
     UI.smoothBtn = smoothBtn
 
-    -- ปุ่ม สเปคจอ
     local presetOpenBtn = Instance.new("TextButton")
     presetOpenBtn.Size = UDim2.new(1, -20, 0, sz(28))
-    presetOpenBtn.Position = UDim2.new(0, 10, 0, sz(312))
+    presetOpenBtn.Position = UDim2.new(0, 10, 0, sliderStartY + sz(142))
     presetOpenBtn.BackgroundColor3 = Color3.fromRGB(70, 80, 120)
     presetOpenBtn.BorderSizePixel = 0
     presetOpenBtn.Text = "📐 สเปคจอ (แสดง)"
     presetOpenBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
     presetOpenBtn.Font = Enum.Font.GothamBold
     presetOpenBtn.TextSize = sz(11)
-    presetOpenBtn.Parent = main
+    presetOpenBtn.Parent = body
     Instance.new("UICorner", presetOpenBtn).CornerRadius = UDim.new(0, 6)
     UI.presetOpenBtn = presetOpenBtn
 
-    -- Preset Grid
     local presetFrame = Instance.new("Frame")
     presetFrame.Size = UDim2.new(1, -20, 0, sz(94))
-    presetFrame.Position = UDim2.new(0, 10, 0, sz(346))
+    presetFrame.Position = UDim2.new(0, 10, 0, sliderStartY + sz(176))
     presetFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
     presetFrame.BackgroundTransparency = 0.4
     presetFrame.BorderSizePixel = 0
     presetFrame.Visible = false
-    presetFrame.Parent = main
+    presetFrame.Parent = body
     Instance.new("UICorner", presetFrame).CornerRadius = UDim.new(0, 8)
+    UI.presetFrame = presetFrame
 
     local presetPad = Instance.new("UIPadding", presetFrame)
     presetPad.PaddingTop = UDim.new(0, 6)
@@ -715,20 +851,22 @@ do
     end)
 
     -- ===== List =====
+    local listY = sliderStartY + sz(280)
+
     local listTitle = Instance.new("TextLabel")
     listTitle.Size = UDim2.new(1, -20, 0, sz(18))
-    listTitle.Position = UDim2.new(0, 10, 0, sz(450))
+    listTitle.Position = UDim2.new(0, 10, 0, listY)
     listTitle.BackgroundTransparency = 1
     listTitle.Text = "👥 เลือกเป้า (คลิกเพื่อเกาะ)"
     listTitle.TextColor3 = Color3.fromRGB(180, 200, 255)
     listTitle.Font = Enum.Font.GothamBold
     listTitle.TextSize = sz(11)
     listTitle.TextXAlignment = Enum.TextXAlignment.Left
-    listTitle.Parent = main
+    listTitle.Parent = body
 
     local scroll = Instance.new("ScrollingFrame")
-    scroll.Size = UDim2.new(1, -20, 0, sz(100))
-    scroll.Position = UDim2.new(0, 10, 0, sz(472))
+    scroll.Size = UDim2.new(1, -20, 0, sz(90))
+    scroll.Position = UDim2.new(0, 10, 0, listY + sz(22))
     scroll.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     scroll.BackgroundTransparency = 0.6
     scroll.BorderSizePixel = 0
@@ -736,7 +874,7 @@ do
     scroll.ScrollBarImageColor3 = Color3.fromRGB(150, 100, 255)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scroll.Parent = main
+    scroll.Parent = body
     Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 8)
 
     local listLayout = Instance.new("UIListLayout", scroll)
@@ -759,7 +897,7 @@ do
     refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     refreshBtn.Font = Enum.Font.GothamBold
     refreshBtn.TextSize = sz(11)
-    refreshBtn.Parent = main
+    refreshBtn.Parent = body
     Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 6)
 
     local clearHotkeyBtn = Instance.new("TextButton")
@@ -772,8 +910,56 @@ do
     clearHotkeyBtn.Font = Enum.Font.GothamBold
     clearHotkeyBtn.TextSize = sz(11)
     clearHotkeyBtn.Visible = isPC
-    clearHotkeyBtn.Parent = main
+    clearHotkeyBtn.Parent = body
     Instance.new("UICorner", clearHotkeyBtn).CornerRadius = UDim.new(0, 6)
+
+    -- ═══════════════════════════════════════════
+    -- COLLAPSE LOGIC
+    -- ═══════════════════════════════════════════
+    local function toggleCollapse()
+        S.collapsed = not S.collapsed
+        if S.collapsed then
+            main.Size = UDim2.new(0, collapsedW, 0, collapsedH)
+            main.Position = UDim2.new(0, 20, 0, 40)
+            body.Visible = false
+            title.Text = "👻 Ghost"
+            collapseBtn.Text = "▲"
+            killBtn.Position = UDim2.new(1, -sz(36), 0, sz(4))
+            minimizeBtn.Visible = false
+        else
+            main.Size = UDim2.new(0, mainW, 0, mainH)
+            body.Visible = true
+            title.Text = "👻 GHOST V5"
+            collapseBtn.Text = "▼"
+            killBtn.Position = UDim2.new(1, -sz(72), 0, sz(4))
+            minimizeBtn.Visible = true
+        end
+    end
+
+    -- Minimize (ซ่อนเหลือปุ่มเล็ก)
+    local isMinimized = false
+    local function toggleMinimize()
+        isMinimized = not isMinimized
+        if isMinimized then
+            main.Size = UDim2.new(0, sz(40), 0, sz(40))
+            main.Position = UDim2.new(0, 20, 0, 40)
+            body.Visible = false
+            title.Visible = false
+            collapseBtn.Visible = false
+            minimizeBtn.Text = "□"
+            killBtn.Visible = false
+        else
+            main.Size = UDim2.new(0, mainW, 0, mainH)
+            body.Visible = true
+            title.Visible = true
+            collapseBtn.Visible = true
+            minimizeBtn.Text = "−"
+            killBtn.Visible = true
+        end
+    end
+
+    collapseBtn.MouseButton1Click:Connect(toggleCollapse)
+    minimizeBtn.MouseButton1Click:Connect(toggleMinimize)
 
     -- ═══════════════════════════════════════════
     -- SLIDER LOGIC
@@ -885,6 +1071,7 @@ do
     end
 
     function UI.refreshHotkey()
+        if not UI.hotkeyBtn then return end
         if S.hotkeyWaiting then
             UI.hotkeyBtn.Text = "⌨ กดปุ่ม..."
             UI.hotkeyBtn.BackgroundColor3 = Color3.fromRGB(200, 130, 40)
@@ -990,6 +1177,7 @@ do
     end
 
     function UI.refreshAll()
+        if not S.alive then return end
         UI.refreshStatus()
         UI.refreshHotkey()
         UI.refreshList()
@@ -1045,24 +1233,29 @@ do
     -- BUTTONS
     -- ═══════════════════════════════════════════
     toggleBtn.MouseButton1Click:Connect(function()
+        if not S.alive then return end
         toggleGhost()
     end)
 
     hotkeyBtn.MouseButton1Click:Connect(function()
+        if not S.alive then return end
         S.hotkeyWaiting = true
         UI.refreshHotkey()
     end)
 
     clearHotkeyBtn.MouseButton1Click:Connect(function()
+        if not S.alive then return end
         S.hotkeyWaiting = false
         rebindHotkey(nil)
     end)
 
     refreshBtn.MouseButton1Click:Connect(function()
+        if not S.alive then return end
         UI.refreshList()
     end)
 
     toggleSpectateBtn.MouseButton1Click:Connect(function()
+        if not S.alive then return end
         if S.spectateActive then
             disableSpectate()
         else
@@ -1073,10 +1266,15 @@ do
     local smoothLevels = {0.15, 0.25, 0.4, 0.6, 1.0}
     local smoothIdx = 2
     smoothBtn.MouseButton1Click:Connect(function()
+        if not S.alive then return end
         smoothIdx = smoothIdx + 1
         if smoothIdx > #smoothLevels then smoothIdx = 1 end
         S.spectateSmooth = smoothLevels[smoothIdx]
         UI.refreshSpectate()
+    end)
+
+    killBtn.MouseButton1Click:Connect(function()
+        shutdown()
     end)
 
     -- ═══════════════════════════════════════════
@@ -1084,7 +1282,8 @@ do
     -- ═══════════════════════════════════════════
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then return end
-        if not S.enabled or not S.alive then return end
+        if not S.alive then return end
+        if not S.enabled then return end
         if not S.spectateActive then return end
 
         if input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -1105,7 +1304,8 @@ do
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if not S.enabled or not S.alive then return end
+        if not S.alive then return end
+        if not S.enabled then return end
         if not S.spectateActive then return end
         if not S.spectateMouseDown then return end
 
@@ -1137,40 +1337,43 @@ do
     end)
 
     -- ═══════════════════════════════════════════
-    -- KEYBOARD INPUT (Hotkey waiting)
+    -- KEYBOARD INPUT (Hotkey waiting) - PC only
     -- ═══════════════════════════════════════════
-    UserInputService.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        if not S.alive then return end
+    if isPC then
+        UserInputService.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if not S.alive then return end
 
-        if S.hotkeyWaiting then
-            if input.KeyCode == Enum.KeyCode.Escape then
-                S.hotkeyWaiting = false
-                UI.refreshHotkey()
-                return
-            end
-            if input.KeyCode == Enum.KeyCode.Backspace
-                or input.KeyCode == Enum.KeyCode.Delete then
-                S.hotkeyWaiting = false
-                rebindHotkey(nil)
-                return
-            end
-            if input.UserInputType == Enum.UserInputType.Keyboard then
-                if input.KeyCode ~= Enum.KeyCode.Unknown then
+            if S.hotkeyWaiting then
+                if input.KeyCode == Enum.KeyCode.Escape then
                     S.hotkeyWaiting = false
-                    rebindHotkey(input.KeyCode)
+                    UI.refreshHotkey()
+                    return
+                end
+                if input.KeyCode == Enum.KeyCode.Backspace
+                    or input.KeyCode == Enum.KeyCode.Delete then
+                    S.hotkeyWaiting = false
+                    rebindHotkey(nil)
+                    return
+                end
+                if input.UserInputType == Enum.UserInputType.Keyboard then
+                    if input.KeyCode ~= Enum.KeyCode.Unknown then
+                        S.hotkeyWaiting = false
+                        rebindHotkey(input.KeyCode)
+                    end
                 end
             end
-        end
-    end)
+        end)
+    end
 
     -- ═══════════════════════════════════════════
     -- RESPAWN HANDLER
     -- ═══════════════════════════════════════════
     LP.CharacterAdded:Connect(function()
+        if not S.alive then return end
         if S.enabled then
             task.wait(0.5)
-            if S.enabled then
+            if S.enabled and S.alive then
                 stopGhost()
             end
         end
@@ -1182,6 +1385,7 @@ do
     task.spawn(function()
         while S.alive do
             task.wait(2)
+            if not S.alive then break end
             if UI.refreshStatus then UI.refreshStatus() end
             if UI.refreshList then UI.refreshList() end
         end
@@ -1191,5 +1395,5 @@ do
     -- INIT
     -- ═══════════════════════════════════════════
     UI.refreshAll()
-    print("[Ghost Stick V4] โหลดเสร็จ")
+    print("[Ghost Stick V5] โหลดเสร็จ | Device:", deviceType)
 end
