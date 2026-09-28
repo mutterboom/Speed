@@ -1,20 +1,19 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Item ESP V2.0 | Mobile Ninja Compatible                       ║
--- ║  - บังคับ PlayerGui (ไม่ใช้ CoreGui)                           ║
--- ║  - Fallback สำหรับทุก API                                      ║
--- ║  - ปลอดภัยสำหรับ Mobile Ninja / Delta / Fluxus                 ║
+-- ║  Item ESP V2.2 | Smart Grouping                                ║
+-- ║  - Group Model + Part เป็น item เดียว                          ║
+-- ║  - เมนูแสดงไม่ซ้ำ                                              ║
+-- ║  - Mobile Ninja Compatible                                     ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 
-print("[ItemESP] ========== START V2.0 ==========")
+print("[ItemESP] ========== START V2.2 ==========")
 
--- ═══ SERVICES ═══
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local LP = Players.LocalPlayer
 
 print("[ItemESP] Services loaded")
 
--- ═══ DEVICE DETECTION (ปลอดภัย) ═══
+-- ═══ DEVICE ═══
 local isMobile = false
 local isPC = false
 local isConsole = false
@@ -25,15 +24,14 @@ pcall(function()
     isConsole = UIS.GamepadEnabled and not UIS.KeyboardEnabled
 end)
 
--- ถ้าตรวจไม่ได้ → default PC
 if not isMobile and not isPC and not isConsole then
     isPC = true
 end
 
-print("[ItemESP] Touch:", UIS.TouchEnabled, "| Keyboard:", UIS.KeyboardEnabled, "| Mouse:", UIS.MouseEnabled)
+print("[ItemESP] Touch:", UIS.TouchEnabled, "| KB:", UIS.KeyboardEnabled)
 print("[ItemESP] Detected:", isMobile and "Mobile" or isPC and "PC" or "Console")
 
--- ═══ SCREEN SIZE (Fallback) ═══
+-- ═══ SCREEN ═══
 local screenX = 800
 local screenY = 600
 
@@ -49,46 +47,31 @@ pcall(function()
 end)
 
 print("[ItemESP] Screen:", screenX .. "x" .. screenY)
-
 local minSide = math.min(screenX, screenY)
 
--- ═══ UI SCALE (Mobile Ninja) ═══
+-- ═══ UI SCALE ═══
 local uiScale = 1.0
 local deviceName = "PC"
 
 if isMobile then
-    if minSide < 350 then
-        uiScale = 0.55; deviceName = "Mobile-XS"
-    elseif minSide < 400 then
-        uiScale = 0.65; deviceName = "Mobile-Small"
-    elseif minSide < 480 then
-        uiScale = 0.78; deviceName = "Mobile-Mid"
-    elseif minSide < 600 then
-        uiScale = 0.88; deviceName = "Mobile-Large"
-    elseif minSide < 800 then
-        uiScale = 0.95; deviceName = "Tablet-Small"
-    else
-        uiScale = 1.05; deviceName = "Tablet-Large"
-    end
+    if minSide < 350 then uiScale = 0.55; deviceName = "Mobile-XS"
+    elseif minSide < 400 then uiScale = 0.65; deviceName = "Mobile-Small"
+    elseif minSide < 480 then uiScale = 0.78; deviceName = "Mobile-Mid"
+    elseif minSide < 600 then uiScale = 0.88; deviceName = "Mobile-Large"
+    elseif minSide < 800 then uiScale = 0.95; deviceName = "Tablet-Small"
+    else uiScale = 1.05; deviceName = "Tablet-Large" end
 elseif isConsole then
     uiScale = 1.15; deviceName = "Console"
 else
-    if screenY < 700 then
-        uiScale = 0.85; deviceName = "PC-Small"
-    elseif screenY < 900 then
-        uiScale = 0.95; deviceName = "PC-Mid"
-    elseif screenY < 1200 then
-        uiScale = 1.0; deviceName = "PC"
-    else
-        uiScale = 1.15; deviceName = "PC-4K"
-    end
+    if screenY < 700 then uiScale = 0.85; deviceName = "PC-Small"
+    elseif screenY < 900 then uiScale = 0.95; deviceName = "PC-Mid"
+    elseif screenY < 1200 then uiScale = 1.0; deviceName = "PC"
+    else uiScale = 1.15; deviceName = "PC-4K" end
 end
 
 print("[ItemESP] Device:", deviceName, "| Scale:", uiScale)
-
 local function S(px) return math.floor(px * uiScale) end
 
--- ═══ UI SIZES ═══
 local UI_SCALE = {
     MainWidth = isMobile and S(280) or S(400),
     MainHeight = isMobile and S(380) or S(500),
@@ -105,9 +88,6 @@ local UI_SCALE = {
 -- ═══ CONFIG ═══
 local CFG = {
     ContainerPath = "Workspace.Items",
-    UsePatterns = false,
-    Patterns = { "coin","gem","chest","item","drop","pickup",
-                 "orb","shard","token","reward","loot" },
     ESPEnabled = true,
     ESPColor = Color3.fromRGB(255, 220, 100),
     ESPTransparency = 0.5,
@@ -117,24 +97,21 @@ local CFG = {
     MaxItems = 300,
 }
 
--- ═══ STATE ═══
 local State = {
     Running = true,
-    Items = {},
+    Items = {},         -- [model_or_part] = esp
     SortedList = {},
     LastGUIRefresh = 0,
     TeleportCount = 0,
     Collapsed = false,
 }
 
--- ═══ CLEANUP ═══
+-- CLEANUP
 pcall(function()
-    local playerGui = LP:FindFirstChild("PlayerGui")
-    if playerGui then
-        for _, g in ipairs(playerGui:GetChildren()) do
-            if g.Name:find("^ItemESP") or g.Name:find("^AutoCollect") then
-                g:Destroy()
-            end
+    local pg = LP:FindFirstChild("PlayerGui")
+    if pg then
+        for _, g in ipairs(pg:GetChildren()) do
+            if g.Name:find("^ItemESP") then g:Destroy() end
         end
     end
     for _, obj in ipairs(workspace:GetDescendants()) do
@@ -164,24 +141,65 @@ local function getContainer()
     return obj
 end
 
+-- ✅ หา "item root" — เลือก Model หรือ Part ที่สูงสุด
+local function getItemRoot(obj, container)
+    if not obj or not obj.Parent then return nil end
+
+    -- ถ้าเป็น Model → ใช้ Model นั้น
+    if obj:IsA("Model") then
+        return obj
+    end
+
+    -- ถ้าเป็น BasePart → หา Model ที่บรรจุอยู่
+    if obj:IsA("BasePart") then
+        local current = obj.Parent
+        while current and current ~= container and current ~= workspace do
+            if current:IsA("Model") then
+                return current  -- ✅ เจอ Model parent → ใช้ Model
+            end
+            current = current.Parent
+        end
+        -- ✅ ไม่มี Model → ใช้ Part นั้นเอง (Part เดี่ยวๆ)
+        return obj
+    end
+
+    return nil
+end
+
+-- ✅ เช็ค: obj นี้เป็น root ที่แท้จริงไหม
+local function isRootItem(obj, container)
+    if not obj or not obj.Parent then return false end
+
+    if obj:IsA("Model") then
+        -- Model ต้องมี parent = container (หรือใกล้)
+        return obj.Parent == container
+    elseif obj:IsA("BasePart") then
+        -- Part ต้องมี parent = container เท่านั้น (ไม่ซ้อนใน Model)
+        if obj.Parent ~= container then return false end
+        return true
+    end
+    return false
+end
+
 local function getItemPosition(item)
     if not item then return nil end
     if item:IsA("BasePart") then return item.Position end
-    if item.PrimaryPart then return item.PrimaryPart.Position end
-    local parts = {}
-    for _, d in ipairs(item:GetDescendants()) do
-        if d:IsA("BasePart") then table.insert(parts, d) end
+    if item:IsA("Model") then
+        if item.PrimaryPart then return item.PrimaryPart.Position end
+        local part = item:FindFirstChildWhichIsA("BasePart", true)
+        if part then return part.Position end
     end
-    if #parts == 0 then return nil end
-    local sum = Vector3.new(0, 0, 0)
-    for _, p in ipairs(parts) do sum = sum + p.Position end
-    return sum / #parts
+    return nil
 end
 
 local function getItemPart(item)
     if not item then return nil end
     if item:IsA("BasePart") then return item end
-    return item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart", true)
+    if item:IsA("Model") then
+        if item.PrimaryPart then return item.PrimaryPart end
+        return item:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return nil
 end
 
 local function getDistanceTo(item)
@@ -194,12 +212,17 @@ end
 
 -- ═══ ESP ═══
 local function createESP(item)
+    if not item then return nil end
     local part = getItemPart(item)
     if not part then return nil end
 
+    -- ✅ กันซ้ำ
+    if item:GetAttribute("AC_ESP_Done") then
+        return State.Items[item]
+    end
+
     local esp = {}
 
-    -- Highlight (optional - fallback ถ้าไม่ได้)
     local hlOk = pcall(function()
         local hl = Instance.new("Highlight")
         hl.Name = "AC_ESP"
@@ -212,11 +235,7 @@ local function createESP(item)
         hl.Parent = item
         esp.highlight = hl
     end)
-    if not hlOk then
-        esp.highlight = nil
-    end
 
-    -- Billboard label
     local bbOk = pcall(function()
         local bb = Instance.new("BillboardGui")
         bb.Name = "AC_Label"
@@ -241,47 +260,65 @@ local function createESP(item)
         esp.billboard = bb
         esp.label = label
     end)
-    if not bbOk then
-        if esp.highlight then esp.highlight:Destroy() end
+
+    if not bbOk and not esp.highlight then
         return nil
     end
+
+    pcall(function() item:SetAttribute("AC_ESP_Done", true) end)
 
     esp.part = part
     return esp
 end
 
-local function destroyESP(esp)
+local function destroyESP(esp, item)
     if not esp then return end
     if esp.highlight then pcall(function() esp.highlight:Destroy() end) end
     if esp.billboard then pcall(function() esp.billboard:Destroy() end) end
+    if item then
+        pcall(function() item:SetAttribute("AC_ESP_Done", nil) end)
+    end
 end
 
 local function clearAllESP()
     for item, esp in pairs(State.Items) do
-        destroyESP(esp)
+        destroyESP(esp, item)
     end
     State.Items = {}
 end
 
--- ═══ SCAN ═══
+-- ═══ SCAN — แก้ใหม่ทั้งหมด ═══
 local function scanItems()
     if not State.Running then return {} end
     local container = getContainer()
     if not container then return {} end
 
-    local found = {}
+    local found = {}          -- [root] = {pos, dist}
+    local rootSet = {}        -- ✅ mark root ที่เจอแล้ว
     local list = container:GetDescendants()
 
-    for _, item in ipairs(list) do
-        if (item:IsA("BasePart") or item:IsA("Model")) then
-            local pos = getItemPosition(item)
+    for _, obj in ipairs(list) do
+        if not obj or not obj.Parent then continue end
+
+        -- ✅ หา root ของ obj นี้
+        local root = getItemRoot(obj, container)
+        if not root or rootSet[root] then
+            -- ถ้า root นี้เจอแล้ว → ข้าม
+            continue
+        end
+
+        -- ✅ เช็ค: root ต้องเป็น item จริง
+        if isRootItem(root, container) then
+            local pos = getItemPosition(root)
             if pos then
-                local dist = getDistanceTo(item) or 999999
+                local dist = getDistanceTo(root) or 999999
                 if dist <= CFG.MaxESPDistance then
-                    found[item] = { pos = pos, dist = dist }
+                    rootSet[root] = true
+                    found[root] = { pos = pos, dist = dist }
                 end
             end
         end
+
         if CFG.MaxItems > 0 then
             local count = 0
             for _ in pairs(found) do count = count + 1 end
@@ -291,8 +328,8 @@ local function scanItems()
 
     -- ลบ ESP ที่หายไป
     for item, esp in pairs(State.Items) do
-        if not found[item] then
-            destroyESP(esp)
+        if not found[item] or not item.Parent then
+            destroyESP(esp, item)
             State.Items[item] = nil
         end
     end
@@ -341,27 +378,22 @@ local GUI = { enabled = false, itemButtons = {} }
 
 local function makeGUI()
     local ok, err = pcall(function()
-        -- ✅ บังคับ PlayerGui (Mobile Ninja)
-        local playerGui = LP:WaitForChild("PlayerGui", 5)
-        if not playerGui then
+        local pg = LP:WaitForChild("PlayerGui", 5)
+        if not pg then
             print("[ItemESP] ❌ ไม่เจอ PlayerGui")
             return
         end
 
         local sg = Instance.new("ScreenGui")
-        sg.Name = "ItemESPV20"
+        sg.Name = "ItemESPV22"
         sg.ResetOnSpawn = false
         sg.IgnoreGuiInset = false
         sg.DisplayOrder = 10
-        sg.Parent = playerGui
+        sg.Parent = pg
 
-        print("[ItemESP] ✅ ScreenGui สร้าง + parent = PlayerGui")
-
-        -- ✅ Position ปลอดภัย
         local mw = UI_SCALE.MainWidth
         local mh = UI_SCALE.MainHeight
 
-        -- ให้ Mobile อยู่กลางบน, PC มุมซ้ายบน
         local startX, startY
         if isMobile then
             startX = math.floor((screenX - mw) / 2)
@@ -372,7 +404,6 @@ local function makeGUI()
         end
 
         local f = Instance.new("Frame")
-        f.Name = "Main"
         f.Size = UDim2.new(0, mw, 0, mh)
         f.Position = UDim2.new(0, startX, 0, startY)
         f.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
@@ -386,15 +417,11 @@ local function makeGUI()
         local stroke = Instance.new("UIStroke", f)
         stroke.Color = Color3.fromRGB(70, 110, 200)
         stroke.Thickness = 2
-        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-        -- ═══ TITLE BAR ═══
         local title = Instance.new("Frame")
-        title.Name = "TitleBar"
         title.Size = UDim2.new(1, 0, 0, UI_SCALE.TitleHeight)
         title.BackgroundColor3 = Color3.fromRGB(30, 45, 80)
         title.BorderSizePixel = 0
-        title.Active = true
         title.Parent = f
         Instance.new("UICorner", title).CornerRadius = UDim.new(0, 8)
 
@@ -445,7 +472,6 @@ local function makeGUI()
         closeBtn.Parent = title
         Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 4)
 
-        -- ═══ BODY ═══
         local body = Instance.new("Frame")
         body.Size = UDim2.new(1, 0, 1, -UI_SCALE.TitleHeight)
         body.Position = UDim2.new(0, 0, 0, UI_SCALE.TitleHeight)
@@ -474,7 +500,6 @@ local function makeGUI()
         stats.TextXAlignment = Enum.TextXAlignment.Left
         stats.Parent = body
 
-        -- ═══ BUTTONS ═══
         local btnY = S(44)
         local btnH = UI_SCALE.ButtonHeight
 
@@ -493,16 +518,14 @@ local function makeGUI()
             return btn
         end
 
-        -- คำนวณ layout
         local availW = mw - S(20)
         local gap = S(6)
         local bw1 = math.floor((availW - gap * 2) / 3)
-        local bw2 = bw1
-        local bw3 = availW - bw1 - bw2 - gap * 2
+        local bw3 = availW - bw1 - bw1 - gap * 2
 
         local refreshBtn = mkBtn("🔄 สแกน", S(10), btnY, bw1, Color3.fromRGB(60, 90, 160))
-        local tpNearestBtn = mkBtn("🚀 วาป", S(10) + bw1 + gap, btnY, bw2, Color3.fromRGB(140, 100, 40))
-        local clearBtn = mkBtn("🗑 ล้าง", S(10) + bw1 + bw2 + gap*2, btnY, bw3, Color3.fromRGB(100, 70, 40))
+        local tpNearestBtn = mkBtn("🚀 วาป", S(10) + bw1 + gap, btnY, bw1, Color3.fromRGB(140, 100, 40))
+        local clearBtn = mkBtn("🗑 ล้าง", S(10) + bw1 * 2 + gap * 2, btnY, bw3, Color3.fromRGB(100, 70, 40))
 
         local info = Instance.new("TextLabel")
         info.Size = UDim2.new(1, -S(20), 0, S(14))
@@ -515,7 +538,6 @@ local function makeGUI()
         info.TextXAlignment = Enum.TextXAlignment.Left
         info.Parent = body
 
-        -- ═══ LIST ═══
         local listFrame = Instance.new("ScrollingFrame")
         listFrame.Size = UDim2.new(1, -S(20), 1, -(btnY + btnH + S(30)))
         listFrame.Position = UDim2.new(0, S(10), 0, btnY + btnH + S(22))
@@ -625,7 +647,6 @@ local function updateItemList()
     end)
 end
 
--- ═══ UPDATE STATS ═══
 local function updateStats()
     if not GUI.enabled or not GUI.stats then return end
     if not State.Running then return end
@@ -634,7 +655,6 @@ local function updateStats()
     end)
 end
 
--- ═══ TOGGLE ESP ═══
 local function toggleESP()
     if not State.Running then return end
     CFG.ESPEnabled = not CFG.ESPEnabled
@@ -654,7 +674,6 @@ local function toggleESP()
     end
 end
 
--- ═══ COLLAPSE ═══
 local function toggleCollapse()
     if not GUI.enabled then return end
     if not State.Running then return end
@@ -678,7 +697,6 @@ local function toggleCollapse()
     end
 end
 
--- ═══ SHUTDOWN ═══
 local function shutdown()
     if not State.Running then return end
     State.Running = false
@@ -702,10 +720,8 @@ local function shutdown()
     print("[ItemESP] ✅ ปิดเรียบร้อย")
 end
 
--- ═══ BUILD GUI ═══
 makeGUI()
 
--- ═══ BIND BUTTONS ═══
 if GUI.enabled then
     pcall(function()
         GUI.espMiniBtn.MouseButton1Click:Connect(toggleESP)
@@ -732,10 +748,9 @@ if GUI.enabled then
             updateStats()
         end)
     end)
-    print("[ItemESP] ✅ ปุ่มทั้งหมดผูกสำเร็จ")
+    print("[ItemESP] ✅ ปุ่มผูกสำเร็จ")
 end
 
--- ═══ KEYBIND (เฉพาะ PC) ═══
 if isPC then
     UIS.InputBegan:Connect(function(input, processed)
         if processed then return end
@@ -753,7 +768,6 @@ if isPC then
     end)
 end
 
--- ═══ LOOP ═══
 task.spawn(function()
     while State.Running do
         task.wait(CFG.ScanInterval)
@@ -770,7 +784,6 @@ task.spawn(function()
     print("[ItemESP] 🔚 Loop จบ")
 end)
 
--- ═══ ROTATE HANDLER ═══
 pcall(function()
     workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
         if not State.Running then return end
@@ -779,26 +792,19 @@ pcall(function()
         local vp = workspace.CurrentCamera.ViewportSize
         if not vp then return end
 
-        local newX = vp.X
-        local newY = vp.Y
-
         if not State.Collapsed then
             local mw = UI_SCALE.MainWidth
             local mh = UI_SCALE.MainHeight
-
-            if mh > newY - 40 then mh = newY - 40 end
-            if mw > newX - 20 then mw = newX - 20 end
-
+            if mh > vp.Y - 40 then mh = vp.Y - 40 end
+            if mw > vp.X - 20 then mw = vp.X - 20 end
             GUI.frame.Size = UDim2.new(0, mw, 0, mh)
         end
     end)
 end)
 
--- ═══ START ═══
 print("[ItemESP] ════════════════════════════════")
-print("[ItemESP] Item ESP V2.0")
+print("[ItemESP] Item ESP V2.2 (Smart Grouping)")
 print("[ItemESP] Device:", deviceName)
-print("[ItemESP] Platform:", isMobile and "Mobile" or isPC and "PC" or "Console")
 print("[ItemESP] Scale:", uiScale)
 print("[ItemESP] ════════════════════════════════")
 
@@ -810,4 +816,4 @@ if State.Running then
     print("[ItemESP] 🔍 เจอ " .. #State.SortedList .. " item")
 end
 
-print("[ItemESP] ========== READY V2.0 ==========")
+print("[ItemESP] ========== READY V2.2 ==========")
