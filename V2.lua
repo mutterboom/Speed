@@ -1,6 +1,7 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Boomxico V8.6 FIXED                                          ║
--- ║  ฟีเจอร์: Speed / Fly / Stick / ESP / Names / Noclip / FPS    ║
+-- ║  Boomxico V8.7                                                ║
+-- ║  ฟีเจอร์: Speed / Fly / Stick / ESP / Names / Noclip / FPS   ║
+-- ║  เพิ่ม: ป้องกันการบันทึกหน้าจอ (Stream Mode)                  ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 do
     if not game:IsLoaded() then game.Loaded:Wait() end
@@ -34,7 +35,7 @@ do
     local B = {}
     B.st = {speed=false, fly=false, esp=false, name=false, noclip=false,
             fps=false, team=false, stick=false, alive=true, open=true,
-            espOpen=false,
+            espOpen=false, antiRec=false, antiRecBackup={},
             runSpd=50, flySpd=50, nameDist=800, espIdx=1, stickDist=3,
             stickTarget=nil, stickHK=nil, stickWait=false,
             waitSpeedHK=false, waitFlyHK=false,
@@ -46,7 +47,7 @@ do
     B.hotkeys = {speed={key=nil, pressed=false}, fly={key=nil, pressed=false}}
     B.saved = {speed=false, speedVal=50, fly=false, flyVal=50,
                esp=false, name=false, nameDist=800, noclip=false,
-               fps=false, espIdx=1, team=false, stickDist=3}
+               fps=false, espIdx=1, team=false, stickDist=3, antiRec=false}
 
     B.colors = {
         bg=Color3.fromRGB(8,8,10), bgL=Color3.fromRGB(22,22,28),
@@ -70,7 +71,7 @@ do
     B.conns = {speed=nil, speedRS=nil, speedHB=nil, fly=nil, stick=nil,
                noclip=nil, bodyVel=nil, bodyGyro=nil, animTrack=nil}
 
-    B.STICK_ACT = "BoomStickHK_V86"
+    B.STICK_ACT = "BoomStickHK_V87"
     pcall(function()
         for _, n in ipairs({"StickTP_Hotkey","StickTP_Hotkey_v13","StickTP_Hotkey_v14", B.STICK_ACT}) do
             pcall(function() C:UnbindAction(n) end)
@@ -476,7 +477,7 @@ do
 
     local title = Instance.new("TextButton")
     title.Size = UDim2.new(1,-20,0,S(42)); title.Position = UDim2.new(0,10,0,S(8))
-    title.BackgroundTransparency = 1; title.Text = "BY BOOMXICO V8.6"
+    title.BackgroundTransparency = 1; title.Text = "BY BOOMXICO V8.7"
     title.TextColor3 = CC.txt; title.TextStrokeTransparency = 0.4
     title.TextStrokeColor3 = Color3.fromRGB(0,0,0)
     title.Font = Enum.Font.GothamBold; title.TextSize = S(20)
@@ -957,6 +958,74 @@ do
     killBtn.TextColor3 = Color3.fromRGB(255,130,130); killBtn.Font = Enum.Font.GothamBold
     local closeBtn = newBtn("ซ่อนเมนู"); closeBtn.LayoutOrder = 11
     closeBtn.TextColor3 = CC.txtD
+
+    -- ═══════════════════════════════════════════
+    -- 🆕 กันถ่ายจอ (Stream Mode)
+    -- ═══════════════════════════════════════════
+    local antiBtn = newBtn("กันถ่ายจอ: ปิด")
+    antiBtn.LayoutOrder = 12
+    antiBtn.BackgroundColor3 = Color3.fromRGB(30,15,45)
+    antiBtn.TextColor3 = Color3.fromRGB(220,180,255)
+    antiBtn.Font = Enum.Font.GothamBold
+
+    local antiScreen = Instance.new("ScreenGui")
+    antiScreen.Name = "ByBoomAntiRec"
+    antiScreen.ResetOnSpawn = false
+    antiScreen.Enabled = false
+    antiScreen.Parent = LP:WaitForChild("PlayerGui")
+
+    local antiReturnBtn = Instance.new("TextButton")
+    antiReturnBtn.Size = UDim2.new(0, S(60), 0, S(60))
+    antiReturnBtn.Position = UDim2.new(1, -S(80), 0, S(100))
+    antiReturnBtn.BackgroundColor3 = Color3.fromRGB(30,15,45)
+    antiReturnBtn.BackgroundTransparency = 0.5
+    antiReturnBtn.Text = "📷"
+    antiReturnBtn.TextColor3 = Color3.fromRGB(220,180,255)
+    antiReturnBtn.TextStrokeTransparency = 0.5
+    antiReturnBtn.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+    antiReturnBtn.Font = Enum.Font.GothamBold
+    antiReturnBtn.TextSize = S(24)
+    antiReturnBtn.Active = true
+    antiReturnBtn.Draggable = true
+    antiReturnBtn.Parent = antiScreen
+    Instance.new("UICorner", antiReturnBtn).CornerRadius = UDim.new(1,0)
+    addGlow(antiReturnBtn, 0.5, false)
+
+    local function setAntiRec(on)
+        B.st.antiRec = on
+        B.saved.antiRec = on
+
+        if on then
+            B.st.antiRecBackup = {
+                guiEnabled = UI.gui.Enabled,
+                esp = B.st.esp,
+                name = B.st.name,
+            }
+            if B.st.esp then B.st.esp = false; clearESP() end
+            if B.st.name then B.st.name = false; clearNames() end
+            UI.gui.Enabled = false
+            antiScreen.Enabled = true
+        else
+            local bk = B.st.antiRecBackup or {}
+            UI.gui.Enabled = bk.guiEnabled ~= false
+            if bk.esp then B.st.esp = true; refreshESP() end
+            if bk.name then B.st.name = true; refreshNames() end
+            antiScreen.Enabled = false
+            B.st.antiRecBackup = {}
+        end
+
+        antiBtn.Text = on and "กันถ่ายจอ: เปิด" or "กันถ่ายจอ: ปิด"
+        antiBtn.BackgroundColor3 = on and CC.act or Color3.fromRGB(30,15,45)
+    end
+
+    antiBtn.MouseButton1Click:Connect(function()
+        setAntiRec(not B.st.antiRec)
+    end)
+
+    antiReturnBtn.MouseButton1Click:Connect(function()
+        setAntiRec(false)
+    end)
+    -- ═══════════════════════════════════════════
 
     -- Pad
     UI.pad = Instance.new("Frame")
@@ -1519,6 +1588,7 @@ do
             hum.JumpPower = 50; hum:ChangeState(Enum.HumanoidStateType.GettingUp)
         end
         if UI.gui then UI.gui:Destroy() end
+        if antiScreen then antiScreen:Destroy() end
     end
     killBtn.MouseButton1Click:Connect(killScript)
 
@@ -1575,7 +1645,14 @@ do
         for k in pairs(B.dirs) do B.dirs[k] = false end
         if B.UI.refreshHKLabels then B.UI.refreshHKLabels() end
         if UI.refreshStickHKBtn then UI.refreshStickHKBtn() end
+        -- 🆕 คงสถานะกันถ่ายจอ ถ้าเปิดอยู่
+        if B.st.antiRec then
+            UI.gui.Enabled = false
+            antiScreen.Enabled = true
+            antiBtn.Text = "กันถ่ายจอ: เปิด"
+            antiBtn.BackgroundColor3 = CC.act
+        end
     end)
 
-    print("[Boomxico V8.6] โหลดเสร็จ | Device:", dev, "| Scale:", scale)
+    print("[Boomxico V8.7] โหลดเสร็จ | Device:", dev, "| Scale:", scale)
 end
