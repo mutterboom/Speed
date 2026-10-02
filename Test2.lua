@@ -578,8 +578,7 @@ do
 
     UI.stickStat = Instance.new("TextLabel")
     UI.stickStat.Size = UDim2.new(1,-10,0,S(18)); UI.stickStat.Position = UDim2.new(0,5,0,S(34))
-    UI.stickStat.BackgroundTransparency = 1
-    UI.stickStat.Text = "🎯 เป้า: -"
+    UI.stickStat.BackgroundTransparency = 1    UI.stickStat.Text = "🎯 เป้า: -"
     UI.stickStat.TextColor3 = Color3.fromRGB(200,220,255)
     UI.stickStat.Font = Enum.Font.Code; UI.stickStat.TextSize = S(11)
     UI.stickStat.TextXAlignment = Enum.TextXAlignment.Left
@@ -1027,35 +1026,72 @@ do
     end)
     -- ═══════════════════════════════════════════
 
-    -- Pad
+    -- ═══════════════════════════════════════════
+    -- 🛠 PAD (แก้ไข: ปุ่ม W/S ไม่ทับกับลูกศร)
+    -- ═══════════════════════════════════════════
     UI.pad = Instance.new("Frame")
-    UI.pad.Size = UDim2.new(0,S(180),0,S(180))
-    UI.pad.Position = UDim2.new(1,-S(200),0.5,-S(90))
-    UI.pad.BackgroundColor3 = CC.bg; UI.pad.BackgroundTransparency = 0.4
-    UI.pad.Visible = false; UI.pad.Parent = UI.gui
-    Instance.new("UICorner", UI.pad).CornerRadius = UDim.new(1,0)
+    UI.pad.Size = UDim2.new(0, S(200), 0, S(200))
+    UI.pad.Position = UDim2.new(1, -S(220), 0.5, -S(100))
+    UI.pad.BackgroundColor3 = CC.bg
+    UI.pad.BackgroundTransparency = 0.4
+    UI.pad.Visible = false
+    UI.pad.Parent = UI.gui
+    Instance.new("UICorner", UI.pad).CornerRadius = UDim.new(1, 0)
     addGlow(UI.pad, 0.5, false)
 
-    local function mkPB(txt, pos)
+    -- ใช้ UIGridLayout 3x3 จัดเรียงอัตโนมัติ ป้องกันการทับกัน
+    local padGrid = Instance.new("UIGridLayout", UI.pad)
+    padGrid.CellSize = UDim2.new(0, S(58), 0, S(58))
+    padGrid.CellPadding = UDim2.new(0, S(4), 0, S(4))
+    padGrid.SortOrder = Enum.SortOrder.LayoutOrder
+    padGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    padGrid.VerticalAlignment = Enum.VerticalAlignment.Center
+
+    -- Layout ที่ได้:
+    -- แถวบน:    [ว่าง] [U] [ว่าง]
+    -- แถวกลาง:  [L]    [F] [R]
+    -- แถวล่าง:  [B]    [D] [ว่าง]
+    local function mkPB(txt, order)
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0,S(50),0,S(50)); b.Position = pos
-        b.BackgroundColor3 = Color3.fromRGB(60,40,0)
+        b.Size = UDim2.new(0, S(58), 0, S(58))
+        b.BackgroundColor3 = Color3.fromRGB(60, 40, 0)
         b.BackgroundTransparency = 0.3
-        b.Text = txt; b.TextColor3 = CC.txt
-        b.TextStrokeTransparency = 0.5; b.TextStrokeColor3 = Color3.fromRGB(0,0,0)
-        b.Font = Enum.Font.GothamBold; b.TextSize = S(20)
+        b.Text = txt
+        b.TextColor3 = CC.txt
+        b.TextStrokeTransparency = 0.5
+        b.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = S(20)
+        b.LayoutOrder = order
         b.Parent = UI.pad
-        Instance.new("UICorner", b).CornerRadius = UDim.new(1,0)
+        Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
         addGlow(b, 0.6, false)
         return b
     end
-    local hs = S(25)
-    local bU = mkPB("↑", UDim2.new(0.5,-hs,0,5))
-    local bD = mkPB("↓", UDim2.new(0.5,-hs,1,-S(55)))
-    local bL = mkPB("←", UDim2.new(0,5,0.5,-hs))
-    local bR = mkPB("→", UDim2.new(1,-S(55),0.5,-hs))
-    local bF = mkPB("W", UDim2.new(0.5,-hs,0.5,-S(55)))
-    local bB = mkPB("S", UDim2.new(0.5,-hs,0.5,S(5)))
+
+    -- สร้างช่องว่าง (placeholder) สำหรับจัด layout
+    local function mkSpacer(order)
+        local f = Instance.new("Frame")
+        f.Size = UDim2.new(0, S(58), 0, S(58))
+        f.BackgroundTransparency = 1
+        f.LayoutOrder = order
+        f.Parent = UI.pad
+    end
+
+    -- แถวบน (order 1,2,3)
+    mkSpacer(1)
+    local bU = mkPB("↑", 2)         -- ขึ้น
+    mkSpacer(3)
+
+    -- แถวกลาง (order 4,5,6)
+    local bL = mkPB("←", 4)         -- ซ้าย
+    local bF = mkPB("W", 5)         -- บินไปข้างหน้า (อยู่กลาง)
+    local bR = mkPB("→", 6)         -- ขวา
+
+    -- แถวล่าง (order 7,8,9)
+    local bB = mkPB("S", 7)         -- บินถอยหลัง (ซ้ายล่าง)
+    local bD = mkPB("↓", 8)         -- ลง
+    mkSpacer(9)
 
     local function bindP(b, k)
         b.MouseButton1Down:Connect(function() B.dirs[k] = true; b.BackgroundColor3 = CC.act end)
@@ -1068,6 +1104,7 @@ do
         end)
     end
     bindP(bU,"U"); bindP(bD,"D"); bindP(bL,"L"); bindP(bR,"R"); bindP(bF,"F"); bindP(bB,"B")
+    -- ═══════════════════════════════════════════
 
     local function toggleSpeed()
         if not canT() or not hum or not hum.Parent then return end
