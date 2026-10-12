@@ -2,6 +2,7 @@
 -- ║  Boomxico V8.7                                                ║
 -- ║  ฟีเจอร์: Speed / Fly / Stick / ESP / Names / Noclip / FPS   ║
 -- ║  เพิ่ม: ป้องกันการบันทึกหน้าจอ (Stream Mode) + Auto-clear    ║
+-- ║  แก้ไข: รองรับ Hotkey บนมือถือ (เมาส์/คีย์บอร์ดเสริม)        ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 do
     if not game:IsLoaded() then game.Loaded:Wait() end
@@ -87,6 +88,20 @@ do
     local function clamp(v, a, b) if v<a then return a end if v>b then return b end return v end
     local function getHRP(p) if not p or not p.Parent then return nil end local c = p.Character return c and c:FindFirstChild("HumanoidRootPart") end
     local function espColor() return (B.espColors[B.st.espIdx] or B.espColors[1]).c end
+
+    -- 🆕 ตรวจสอบว่ามีคีย์บอร์ดเชื่อมต่ออยู่หรือไม่
+    local function isKeyboardConnected()
+        local kbs = U:GetConnectedGamepads()
+        if #kbs > 0 then return true end
+        -- เช็คผ่าน KeyboardEnabled แม้อยู่ในโหมด Touch
+        if U.KeyboardEnabled then return true end
+        -- เช็คว่ามีอุปกรณ์ Keyboard ต่ออยู่
+        local devices = U:GetConnectedGamepads()
+        for _, d in ipairs(devices) do
+            if d then return true end
+        end
+        return false
+    end
 
     B.anim = hum:FindFirstChildOfClass("Animator")
     if not B.anim then B.anim = Instance.new("Animator"); B.anim.Parent = hum end
@@ -563,6 +578,7 @@ do
         UI.stickBtn.Size = UDim2.new(0.98,0,0,S(28)); UI.stickBtn.Position = UDim2.new(0.01,0,0,S(4))
     end
 
+    -- 🆕 แก้ไข: แสดง stickHK บนมือถือด้วย (สำหรับคนใช้คีย์บอร์ดเสริม)
     UI.stickHK = Instance.new("TextButton")
     UI.stickHK.BackgroundColor3 = Color3.fromRGB(90,60,60)
     UI.stickHK.BackgroundTransparency = 0.2
@@ -573,20 +589,39 @@ do
     if isPC then
         UI.stickHK.Size = UDim2.new(0.32,0,0,S(28)); UI.stickHK.Position = UDim2.new(0.68,0,0,S(4))
     else
-        UI.stickHK.Size = UDim2.new(0,0,0,0); UI.stickHK.Visible = false
+        -- 🆕 บนมือถือ: แสดงเป็นแถวล่างแทน
+        UI.stickBtn.Size = UDim2.new(0.98,0,0,S(28)); UI.stickBtn.Position = UDim2.new(0.01,0,0,S(4))
+        UI.stickHK.Size = UDim2.new(0.98,0,0,S(22)); UI.stickHK.Position = UDim2.new(0.01,0,0,S(34))
+        UI.stickHK.Text = "⌨ ตั้งปุ่ม Hotkey (ต้องมีคีย์บอร์ด)"
+        UI.stickHK.TextSize = S(9)
+        -- ปรับตำแหน่ง stickStat และ slider ให้ต่ำลง
     end
 
     UI.stickStat = Instance.new("TextLabel")
-    UI.stickStat.Size = UDim2.new(1,-10,0,S(18)); UI.stickStat.Position = UDim2.new(0,5,0,S(34))
-    UI.stickStat.BackgroundTransparency = 1    UI.stickStat.Text = "🎯 เป้า: -"
+    if isPC then
+        UI.stickStat.Size = UDim2.new(1,-10,0,S(18)); UI.stickStat.Position = UDim2.new(0,5,0,S(34))
+    else
+        UI.stickStat.Size = UDim2.new(1,-10,0,S(18)); UI.stickStat.Position = UDim2.new(0,5,0,S(58))
+    end
+    UI.stickStat.BackgroundTransparency = 1
+    UI.stickStat.Text = "🎯 เป้า: -"
     UI.stickStat.TextColor3 = Color3.fromRGB(200,220,255)
     UI.stickStat.Font = Enum.Font.Code; UI.stickStat.TextSize = S(11)
     UI.stickStat.TextXAlignment = Enum.TextXAlignment.Left
     UI.stickStat.TextTruncate = Enum.TextTruncate.AtEnd
     UI.stickStat.Parent = stickRow
 
+    -- 🆕 ปรับขนาด stickRow ให้สูงขึ้นสำหรับมือถือ
+    if not isPC then
+        stickRow.Size = UDim2.new(0.9,0,0,S(102))
+    end
+
     local stSliderRow = Instance.new("Frame")
-    stSliderRow.Size = UDim2.new(1,-10,0,S(22)); stSliderRow.Position = UDim2.new(0,5,0,S(56))
+    if isPC then
+        stSliderRow.Size = UDim2.new(1,-10,0,S(22)); stSliderRow.Position = UDim2.new(0,5,0,S(56))
+    else
+        stSliderRow.Size = UDim2.new(1,-10,0,S(22)); stSliderRow.Position = UDim2.new(0,5,0,S(78))
+    end
     stSliderRow.BackgroundTransparency = 1; stSliderRow.Parent = stickRow
 
     UI.stDistLbl = Instance.new("TextLabel")
@@ -686,7 +721,7 @@ do
             UI.stickHK.Text = "⌨ " .. B.st.stickHK.Name
             UI.stickHK.BackgroundColor3 = Color3.fromRGB(60,140,90)
         else
-            UI.stickHK.Text = "⌨ ตั้งปุ่ม"
+            UI.stickHK.Text = isPC and "⌨ ตั้งปุ่ม" or "⌨ ตั้งปุ่ม Hotkey (ต้องมีคีย์บอร์ด)"
             UI.stickHK.BackgroundColor3 = Color3.fromRGB(90,60,60)
         end
     end
@@ -753,11 +788,12 @@ do
     Instance.new("UICorner", UI.flyBox).CornerRadius = UDim.new(0,10)
     addGlow(UI.flyBox, 0.7, false)
 
-    -- Hotkey Row
+    -- 🆕 Hotkey Row (แก้ไข: แสดงทั้ง PC และ Mobile)
     local hkRow = Instance.new("Frame")
     hkRow.Size = UDim2.new(0.9,0,0,S(28))
     hkRow.BackgroundTransparency = 1; hkRow.LayoutOrder = 3
-    hkRow.Visible = isPC; hkRow.Parent = cont
+    hkRow.Visible = true  -- 🆕 แสดงเสมอ
+    hkRow.Parent = cont
 
     local function mkHK(txt, x)
         local b = Instance.new("TextButton")
@@ -1039,7 +1075,6 @@ do
     Instance.new("UICorner", UI.pad).CornerRadius = UDim.new(1, 0)
     addGlow(UI.pad, 0.5, false)
 
-    -- ใช้ UIGridLayout 3x3 จัดเรียงอัตโนมัติ ป้องกันการทับกัน
     local padGrid = Instance.new("UIGridLayout", UI.pad)
     padGrid.CellSize = UDim2.new(0, S(58), 0, S(58))
     padGrid.CellPadding = UDim2.new(0, S(4), 0, S(4))
@@ -1047,10 +1082,6 @@ do
     padGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
     padGrid.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    -- Layout ที่ได้:
-    -- แถวบน:    [ว่าง] [U] [ว่าง]
-    -- แถวกลาง:  [L]    [F] [R]
-    -- แถวล่าง:  [B]    [D] [ว่าง]
     local function mkPB(txt, order)
         local b = Instance.new("TextButton")
         b.Size = UDim2.new(0, S(58), 0, S(58))
@@ -1069,7 +1100,6 @@ do
         return b
     end
 
-    -- สร้างช่องว่าง (placeholder) สำหรับจัด layout
     local function mkSpacer(order)
         local f = Instance.new("Frame")
         f.Size = UDim2.new(0, S(58), 0, S(58))
@@ -1078,19 +1108,16 @@ do
         f.Parent = UI.pad
     end
 
-    -- แถวบน (order 1,2,3)
     mkSpacer(1)
-    local bU = mkPB("↑", 2)         -- ขึ้น
+    local bU = mkPB("↑", 2)
     mkSpacer(3)
 
-    -- แถวกลาง (order 4,5,6)
-    local bL = mkPB("←", 4)         -- ซ้าย
-    local bF = mkPB("W", 5)         -- บินไปข้างหน้า (อยู่กลาง)
-    local bR = mkPB("→", 6)         -- ขวา
+    local bL = mkPB("←", 4)
+    local bF = mkPB("W", 5)
+    local bR = mkPB("→", 6)
 
-    -- แถวล่าง (order 7,8,9)
-    local bB = mkPB("S", 7)         -- บินถอยหลัง (ซ้ายล่าง)
-    local bD = mkPB("↓", 8)         -- ลง
+    local bB = mkPB("S", 7)
+    local bD = mkPB("↓", 8)
     mkSpacer(9)
 
     local function bindP(b, k)
@@ -1194,18 +1221,17 @@ do
             if B.st.noclip then enableNoclip() else disableNoclip() end
             B.noclipBusy = false
         end
-        if isPC then
-            if B.hotkeys.speed.key and i.KeyCode == B.hotkeys.speed.key then
-                if not B.hotkeys.speed.pressed then
-                    B.hotkeys.speed.pressed = true
-                    toggleSpeed()
-                end
+        -- 🆕 ให้ Hotkey ทำงานบนมือถือด้วย (ถ้ามีคีย์บอร์ดต่อ)
+        if B.hotkeys.speed.key and i.KeyCode == B.hotkeys.speed.key then
+            if not B.hotkeys.speed.pressed then
+                B.hotkeys.speed.pressed = true
+                toggleSpeed()
             end
-            if B.hotkeys.fly.key and i.KeyCode == B.hotkeys.fly.key then
-                if not B.hotkeys.fly.pressed then
-                    B.hotkeys.fly.pressed = true
-                    toggleFly()
-                end
+        end
+        if B.hotkeys.fly.key and i.KeyCode == B.hotkeys.fly.key then
+            if not B.hotkeys.fly.pressed then
+                B.hotkeys.fly.pressed = true
+                toggleFly()
             end
         end
     end)
@@ -1418,27 +1444,35 @@ do
     sSpec.Parent = chk
     Instance.new("UICorner", sSpec).CornerRadius = UDim.new(0,10)
 
+    -- 🆕 แก้ไข: ปรับ scr.Size ให้ยืดหยุ่น ไม่ทับกับ cCls
     local scr = Instance.new("ScrollingFrame")
-    scr.Size = UDim2.new(0.9,0,0,S(250)); scr.Position = UDim2.new(0.05,0,0,S(102))
+    scr.Size = UDim2.new(0.9, 0, 1, -S(102) - S(50))
+    scr.Position = UDim2.new(0.05, 0, 0, S(102))
     scr.BackgroundColor3 = Color3.fromRGB(15,15,20)
     scr.BackgroundTransparency = 0.4
     scr.BorderSizePixel = 0; scr.ScrollBarThickness = 6
     scr.ScrollBarImageColor3 = CC.acc
     scr.CanvasSize = UDim2.new(0,0,0,0)
     scr.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scr.ScrollingDirection = Enum.ScrollingDirection.Y
+    scr.ClipsDescendants = true
     scr.Parent = chk
     Instance.new("UICorner", scr).CornerRadius = UDim.new(0,12)
 
     local scrL = Instance.new("UIListLayout", scr)
     scrL.Padding = UDim.new(0,4); scrL.SortOrder = Enum.SortOrder.LayoutOrder
     local scrP = Instance.new("UIPadding", scr)
-    scrP.PaddingTop = UDim.new(0,6); scrP.PaddingLeft = UDim.new(0,6); scrP.PaddingRight = UDim.new(0,6)
+    scrP.PaddingTop = UDim.new(0,6); scrP.PaddingLeft = UDim.new(0,6)
+    scrP.PaddingRight = UDim.new(0,6); scrP.PaddingBottom = UDim.new(0,6)
 
+    -- 🆕 แก้ไข: cCls อยู่เหนือ scroll
     local cCls = Instance.new("TextButton")
-    cCls.Size = UDim2.new(0.9,0,0,S(34)); cCls.Position = UDim2.new(0.05,0,1,-S(42))
+    cCls.Size = UDim2.new(0.9, 0, 0, S(34))
+    cCls.Position = UDim2.new(0.05, 0, 1, -S(42))
     cCls.BackgroundColor3 = CC.bgL; cCls.BackgroundTransparency = 0.5
     cCls.Text = "ซ่อนเมนู"; cCls.TextColor3 = CC.txtD
     cCls.Font = Enum.Font.GothamMedium; cCls.TextSize = S(13)
+    cCls.ZIndex = 5
     cCls.Parent = chk
     Instance.new("UICorner", cCls).CornerRadius = UDim.new(0,10)
 
