@@ -1,8 +1,11 @@
 -- ╔═══════════════════════════════════════════════════════════════╗
--- ║  Boomxico V8.7                                                ║
+-- ║  Boomxico V8.8                                                ║
 -- ║  ฟีเจอร์: Speed / Fly / Stick / ESP / Names / Noclip / FPS   ║
--- ║  เพิ่ม: ป้องกันการบันทึกหน้าจอ (Stream Mode) + Auto-clear    ║
--- ║  แก้ไข: รองรับ Hotkey บนมือถือ (เมาส์/คีย์บอร์ดเสริม)        ║
+-- ║  Stream Mode + Auto-clear                                    ║
+-- ║  🆕 Mobile Input Detection (USB OTG / Bluetooth)             ║
+-- ║  🆕 Toggle Script Hotkey                                     ║
+-- ║  🆕 Stick Auto-Aim (ตามเมาส์/ศัตรูในจอ)                     ║
+-- ║  🆕 Fly ควบคุมด้วยเมาส์/คีย์บอร์ดบนมือถือ                    ║
 -- ╚═══════════════════════════════════════════════════════════════╝
 do
     if not game:IsLoaded() then game.Loaded:Wait() end
@@ -39,7 +42,9 @@ do
             espOpen=false, antiRec=false, antiRecBackup={},
             runSpd=50, flySpd=50, nameDist=800, espIdx=1, stickDist=3,
             stickTarget=nil, stickHK=nil, stickWait=false,
+            toggleHK=nil, toggleWait=false,
             waitSpeedHK=false, waitFlyHK=false,
+            stickAutoAim=true,   -- 🆕 Auto-aim เปิด default
             lastHK=0, spectateTarget=nil, spectateOn=false, specYaw=0,
             specPitch=-10, specDist=12, mouseDown=false, lastMX=0, lastMY=0}
 
@@ -72,9 +77,11 @@ do
     B.conns = {speed=nil, speedRS=nil, speedHB=nil, fly=nil, stick=nil,
                noclip=nil, bodyVel=nil, bodyGyro=nil, animTrack=nil}
 
-    B.STICK_ACT = "BoomStickHK_V87"
+    B.STICK_ACT = "BoomStickHK_V88"
+    B.TOGGLE_ACT = "BoomToggleHK_V88"
     pcall(function()
-        for _, n in ipairs({"StickTP_Hotkey","StickTP_Hotkey_v13","StickTP_Hotkey_v14", B.STICK_ACT}) do
+        for _, n in ipairs({"StickTP_Hotkey","StickTP_Hotkey_v13","StickTP_Hotkey_v14",
+                            B.STICK_ACT, B.TOGGLE_ACT}) do
             pcall(function() C:UnbindAction(n) end)
         end
     end)
@@ -89,19 +96,85 @@ do
     local function getHRP(p) if not p or not p.Parent then return nil end local c = p.Character return c and c:FindFirstChild("HumanoidRootPart") end
     local function espColor() return (B.espColors[B.st.espIdx] or B.espColors[1]).c end
 
-    -- 🆕 ตรวจสอบว่ามีคีย์บอร์ดเชื่อมต่ออยู่หรือไม่
-    local function isKeyboardConnected()
-        local kbs = U:GetConnectedGamepads()
-        if #kbs > 0 then return true end
-        -- เช็คผ่าน KeyboardEnabled แม้อยู่ในโหมด Touch
-        if U.KeyboardEnabled then return true end
-        -- เช็คว่ามีอุปกรณ์ Keyboard ต่ออยู่
-        local devices = U:GetConnectedGamepads()
-        for _, d in ipairs(devices) do
-            if d then return true end
+    -- ═══════════════════════════════════════════
+    -- 🆕 ระบบตรวจจับเมาส์/คีย์บอร์ดบนมือถือ
+    -- ═══════════════════════════════════════════
+    B.input = {
+        isMobile = isMobile,
+        hasKeyboard = false,
+        hasMouse = false,
+        hasExtInput = false,
+        lastType = "Touch",
+        onChange = {},
+    }
+
+    local function notifyExtInput()
+        local has = B.input.hasKeyboard or B.input.hasMouse
+        if B.input.hasExtInput ~= has then
+            B.input.hasExtInput = has
+            for _, cb in ipairs(B.input.onChange) do
+                pcall(cb, has, B.input)
+            end
+            if B.UI and B.UI.toast then
+                if has then
+                    local parts = {}
+                    if B.input.hasKeyboard then table.insert(parts, "คีย์บอร์ด") end
+                    if B.input.hasMouse then table.insert(parts, "เมาส์") end
+                    B.UI.toast("✅ ตรวจพบ " .. table.concat(parts, " + "), Color3.fromRGB(60,150,90))
+                else
+                    B.UI.toast("📱 กลับสู่โหมดสัมผัส", Color3.fromRGB(90,90,120))
+                end
+            end
         end
-        return false
     end
+
+    local function checkInputNow()
+        B.input.hasKeyboard = U.KeyboardEnabled
+        B.input.hasMouse = U.MouseEnabled
+        notifyExtInput()
+    end
+
+    U.LastInputTypeChanged:Connect(function(inputType)
+        if inputType == Enum.UserInputType.Keyboard then
+            B.input.hasKeyboard = true
+            B.input.lastType = "Keyboard"
+        elseif inputType == Enum.UserInputType.MouseButton1
+            or inputType == Enum.UserInputType.MouseButton2
+            or inputType == Enum.UserInputType.MouseMovement
+            or inputType == Enum.UserInputType.MouseWheel then
+            B.input.hasMouse = true
+            B.input.lastType = "Mouse"
+        elseif inputType == Enum.UserInputType.Touch then
+            B.input.lastType = "Touch"
+        end
+        notifyExtInput()
+    end)
+
+    task.spawn(function()
+        while B.st.alive do
+            task.wait(1.5)
+            local kb = U.KeyboardEnabled
+            local ms = U.MouseEnabled
+            if not kb and B.input.hasKeyboard and B.input.lastType ~= "Keyboard" then
+                B.input.hasKeyboard = false
+            end
+            if not ms and B.input.hasMouse and B.input.lastType ~= "Mouse" then
+                B.input.hasMouse = false
+            end
+            notifyExtInput()
+        end
+    end)
+
+    function B.onInputChange(cb)
+        table.insert(B.input.onChange, cb)
+    end
+
+    -- 🆕 ฟังก์ชันกลาง: ตรวจว่าควรแสดง UI คีย์บอร์ดหรือไม่
+    local function shouldShowKeyboardUI()
+        return isPC or B.input.hasKeyboard or B.input.hasMouse
+    end
+    B.shouldShowKeyboardUI = shouldShowKeyboardUI
+    -- ═══════════════════════════════════════════
 
     B.anim = hum:FindFirstChildOfClass("Animator")
     if not B.anim then B.anim = Instance.new("Animator"); B.anim.Parent = hum end
@@ -164,6 +237,15 @@ do
         if ok then return tr end
         return nil
     end
+
+    -- 🆕 ตรวจว่ามีเมาส์/คีย์บอร์ดสำหรับ fly หรือไม่
+    local function hasKeyboardForFly()
+        return U.KeyboardEnabled or B.input.hasKeyboard
+    end
+    local function hasMouseForFly()
+        return U.MouseEnabled or B.input.hasMouse
+    end
+
     local function startFly()
         if B.conns.bodyVel then B.conns.bodyVel:Destroy() end
         if B.conns.bodyGyro then B.conns.bodyGyro:Destroy() end
@@ -185,7 +267,10 @@ do
             B.conns.animTrack.Looped = true
             pcall(function() B.conns.animTrack:Play(0.1) end)
         end
-        if isMobile and B.UI.pad then B.UI.pad.Visible = true end
+        -- 🆕: แสดง pad เฉพาะเมื่อไม่มีเมาส์/คีย์บอร์ด
+        if isMobile and B.UI.pad then
+            B.UI.pad.Visible = not (hasKeyboardForFly() or hasMouseForFly())
+        end
         if B.conns.fly then B.conns.fly:Disconnect() end
         B.conns.fly = R.RenderStepped:Connect(function()
             if not B.st.alive or not B.st.fly then return end
@@ -200,7 +285,13 @@ do
             B.conns.bodyGyro.CFrame = workspace.CurrentCamera.CFrame
             local cam = workspace.CurrentCamera
             local mv = Vector3.zero
-            if isMobile then
+
+            -- 🆕: ตรวจว่ามีคีย์บอร์ด/เมาส์หรือไม่
+            local useKB = hasKeyboardForFly()
+            local useTouch = isMobile and not useKB
+
+            -- Touch control (สำหรับมือถือไม่มีเมาส์/คีย์บอร์ด)
+            if useTouch then
                 if B.dirs.F then mv = mv + cam.CFrame.LookVector end
                 if B.dirs.B then mv = mv - cam.CFrame.LookVector end
                 if B.dirs.L then mv = mv - cam.CFrame.RightVector end
@@ -208,7 +299,9 @@ do
                 if B.dirs.U then mv = mv + Vector3.new(0,1,0) end
                 if B.dirs.D then mv = mv - Vector3.new(0,1,0) end
             end
-            if isPC then
+
+            -- 🆕 Keyboard control (ใช้ได้ทั้ง PC และมือถือ+เมาส์/คีย์บอร์ด)
+            if useKB then
                 if B.pcK.W then mv = mv + cam.CFrame.LookVector end
                 if B.pcK.S then mv = mv - cam.CFrame.LookVector end
                 if B.pcK.A then mv = mv - cam.CFrame.RightVector end
@@ -216,6 +309,7 @@ do
                 if B.pcK.Space then mv = mv + Vector3.new(0,1,0) end
                 if B.pcK.Shift then mv = mv - Vector3.new(0,1,0) end
             end
+
             if mv.Magnitude > 0 then
                 local j = 1 + (math.random()-0.5)*0.03
                 B.conns.bodyVel.Velocity = mv.Unit * B.st.flySpd * j
@@ -238,7 +332,7 @@ do
         for k in pairs(B.dirs) do B.dirs[k] = false end
     end
 
-    -- ═══ STICK ═══
+    -- ═══ STICK (พร้อม Auto-Aim) ═══
     local function getNearestPlayer()
         local myHRP = getHRP(LP); if not myHRP then return nil end
         local nearest, minD = nil, math.huge
@@ -253,9 +347,57 @@ do
         end
         return nearest
     end
+
+    -- 🆕 หาเป้าที่อยู่ใต้เมาส์ (สำหรับ PC / มือถือ+เมาส์)
+    local function getPlayerUnderMouse()
+        if not U.MouseEnabled and not B.input.hasMouse then return nil end
+        local m = LP:GetMouse()
+        if not m or not m.Target then return nil end
+        local mdl = m.Target:FindFirstAncestorOfClass("Model")
+        while mdl do
+            local pl = P:GetPlayerFromCharacter(mdl)
+            if pl and pl ~= LP then return pl end
+            mdl = mdl:FindFirstAncestorOfClass("Model")
+        end
+        return nil
+    end
+
+    -- 🆕 หาเป้าที่อยู่กลางจอ
+    local function getPlayerInSight()
+        local cam = workspace.CurrentCamera
+        local cp, cl = cam.CFrame.Position, cam.CFrame.LookVector
+        local best, bs = nil, -1
+        for _, p in ipairs(P:GetPlayers()) do
+            if p ~= LP then
+                local h = getHRP(p)
+                if h then
+                    local toT = h.Position - cp
+                    local d = toT.Magnitude
+                    if d > 0 and cl:Dot(toT.Unit) > 0.7 and d < 200 then
+                        local sc = cl:Dot(toT.Unit)/d
+                        if sc > bs then bs = sc; best = p end
+                    end
+                end
+            end
+        end
+        return best
+    end
+
     local function stickLoop()
         if not B.st.stick or not B.st.alive then return end
         local myHRP = getHRP(LP); if not myHRP then return end
+
+        -- 🆕: Auto-Aim — อัปเดตเป้าตามเมาส์/ศัตรูในจอ
+        if B.st.stickAutoAim then
+            local underMouse = getPlayerUnderMouse()
+            local inSight = getPlayerInSight()
+            local newTarget = underMouse or inSight
+            if newTarget and newTarget ~= B.st.stickTarget then
+                B.st.stickTarget = newTarget
+                if B.UI.refreshStickStatus then B.UI.refreshStickStatus() end
+            end
+        end
+
         if not B.st.stickTarget or not getHRP(B.st.stickTarget) then
             B.st.stickTarget = getNearestPlayer()
             if not B.st.stickTarget then return end
@@ -267,10 +409,12 @@ do
         myHRP.AssemblyLinearVelocity = Vector3.zero
         myHRP.AssemblyAngularVelocity = Vector3.zero
     end
+
     local function startStick(t)
         if B.st.stick then return end
         B.st.stick = true
-        B.st.stickTarget = t or B.st.stickTarget or getNearestPlayer()
+        -- 🆕: ลำดับความสำคัญ: ระบุ > เมาส์ > จอ > ใกล้สุด
+        B.st.stickTarget = t or getPlayerUnderMouse() or getPlayerInSight() or getNearestPlayer()
         if not B.st.stickTarget then B.st.stick=false; return end
         if B.conns.stick then pcall(function() B.conns.stick:Disconnect() end) end
         B.conns.stick = R.Heartbeat:Connect(stickLoop)
@@ -303,23 +447,7 @@ do
         return nil
     end
     local function getInSight()
-        local cam = workspace.CurrentCamera
-        local cp, cl = cam.CFrame.Position, cam.CFrame.LookVector
-        local best, bs = nil, -1
-        for _, p in ipairs(P:GetPlayers()) do
-            if p ~= LP then
-                local h = getHRP(p)
-                if h then
-                    local toT = h.Position - cp
-                    local d = toT.Magnitude
-                    if d > 0 and cl:Dot(toT.Unit) > 0.7 and d < 200 then
-                        local sc = cl:Dot(toT.Unit)/d
-                        if sc > bs then bs = sc; best = p end
-                    end
-                end
-            end
-        end
-        return best
+        return getPlayerInSight()
     end
     local function onStickHK()
         if not B.st.alive then return end
@@ -471,6 +599,38 @@ do
     Instance.new("UICorner", UI.toggle).CornerRadius = UDim.new(1,0)
     addGlow(UI.toggle, 0.5, true)
 
+    -- 🆕 Toast Notification
+    UI.toast = function(msg, color)
+        local t = Instance.new("TextLabel")
+        t.Size = UDim2.new(0, S(230), 0, S(40))
+        t.Position = UDim2.new(0.5, -S(115), 0, S(80))
+        t.BackgroundColor3 = Color3.fromRGB(15,15,20)
+        t.BackgroundTransparency = 0.15
+        t.Text = msg
+        t.TextColor3 = color or CC.txt
+        t.Font = Enum.Font.GothamBold
+        t.TextSize = S(13)
+        t.TextStrokeTransparency = 0.5
+        t.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+        t.ZIndex = 100
+        t.Parent = UI.gui
+        Instance.new("UICorner", t).CornerRadius = UDim.new(0,10)
+        local s = Instance.new("UIStroke", t)
+        s.Color = color or CC.brd
+        s.Thickness = 1.5
+        s.Transparency = 0.3
+        task.spawn(function()
+            task.wait(2)
+            for i = 1, 20 do
+                t.BackgroundTransparency = 0.15 + (i/20)*0.85
+                t.TextTransparency = i/20
+                s.Transparency = 0.3 + (i/20)*0.7
+                task.wait(0.03)
+            end
+            t:Destroy()
+        end)
+    end
+
     local mainW = S(280)
     local mainH = math.floor(math.min(520*scale, vp.Y*0.72))
     local mainY = math.max(S(70), (vp.Y - mainH)/2)
@@ -492,7 +652,7 @@ do
 
     local title = Instance.new("TextButton")
     title.Size = UDim2.new(1,-20,0,S(42)); title.Position = UDim2.new(0,10,0,S(8))
-    title.BackgroundTransparency = 1; title.Text = "BY BOOMXICO V8.7"
+    title.BackgroundTransparency = 1; title.Text = "BY BOOMXICO V8.8"
     title.TextColor3 = CC.txt; title.TextStrokeTransparency = 0.4
     title.TextStrokeColor3 = Color3.fromRGB(0,0,0)
     title.Font = Enum.Font.GothamBold; title.TextSize = S(20)
@@ -555,6 +715,36 @@ do
         return b
     end
 
+    -- 🆕 Status Input Label (บนสุด)
+    local inputStatusLbl = Instance.new("TextLabel")
+    inputStatusLbl.Size = UDim2.new(0.9,0,0,S(20))
+    inputStatusLbl.BackgroundTransparency = 1
+    inputStatusLbl.Text = "📱 โหมดสัมผัส"
+    inputStatusLbl.TextColor3 = Color3.fromRGB(180,180,200)
+    inputStatusLbl.Font = Enum.Font.Code
+    inputStatusLbl.TextSize = S(10)
+    inputStatusLbl.LayoutOrder = -1
+    inputStatusLbl.Parent = cont
+
+    local function updateInputStatusLbl()
+        if isPC then
+            inputStatusLbl.Text = "💻 PC | ⌨ + 🖱 พร้อมใช้"
+            inputStatusLbl.TextColor3 = Color3.fromRGB(150,220,255)
+        else
+            local parts = {}
+            if B.input.hasKeyboard then table.insert(parts, "⌨ คีย์บอร์ด") end
+            if B.input.hasMouse then table.insert(parts, "🖱 เมาส์") end
+            if #parts > 0 then
+                inputStatusLbl.Text = "📱 มือถือ + " .. table.concat(parts, " + ")
+                inputStatusLbl.TextColor3 = Color3.fromRGB(150,255,180)
+            else
+                inputStatusLbl.Text = "📱 โหมดสัมผัสเท่านั้น"
+                inputStatusLbl.TextColor3 = Color3.fromRGB(180,180,200)
+            end
+        end
+    end
+    updateInputStatusLbl()
+
     -- Stick Row
     local stickRow = Instance.new("Frame")
     stickRow.Size = UDim2.new(0.9,0,0,S(82))
@@ -572,13 +762,7 @@ do
     UI.stickBtn.Font = Enum.Font.GothamBold; UI.stickBtn.TextSize = S(12)
     UI.stickBtn.Parent = stickRow
     Instance.new("UICorner", UI.stickBtn).CornerRadius = UDim.new(0,10)
-    if isPC then
-        UI.stickBtn.Size = UDim2.new(0.65,0,0,S(28)); UI.stickBtn.Position = UDim2.new(0,0,0,S(4))
-    else
-        UI.stickBtn.Size = UDim2.new(0.98,0,0,S(28)); UI.stickBtn.Position = UDim2.new(0.01,0,0,S(4))
-    end
 
-    -- 🆕 แก้ไข: แสดง stickHK บนมือถือด้วย (สำหรับคนใช้คีย์บอร์ดเสริม)
     UI.stickHK = Instance.new("TextButton")
     UI.stickHK.BackgroundColor3 = Color3.fromRGB(90,60,60)
     UI.stickHK.BackgroundTransparency = 0.2
@@ -586,23 +770,8 @@ do
     UI.stickHK.Font = Enum.Font.GothamBold; UI.stickHK.TextSize = S(10)
     UI.stickHK.Parent = stickRow
     Instance.new("UICorner", UI.stickHK).CornerRadius = UDim.new(0,10)
-    if isPC then
-        UI.stickHK.Size = UDim2.new(0.32,0,0,S(28)); UI.stickHK.Position = UDim2.new(0.68,0,0,S(4))
-    else
-        -- 🆕 บนมือถือ: แสดงเป็นแถวล่างแทน
-        UI.stickBtn.Size = UDim2.new(0.98,0,0,S(28)); UI.stickBtn.Position = UDim2.new(0.01,0,0,S(4))
-        UI.stickHK.Size = UDim2.new(0.98,0,0,S(22)); UI.stickHK.Position = UDim2.new(0.01,0,0,S(34))
-        UI.stickHK.Text = "⌨ ตั้งปุ่ม Hotkey (ต้องมีคีย์บอร์ด)"
-        UI.stickHK.TextSize = S(9)
-        -- ปรับตำแหน่ง stickStat และ slider ให้ต่ำลง
-    end
 
     UI.stickStat = Instance.new("TextLabel")
-    if isPC then
-        UI.stickStat.Size = UDim2.new(1,-10,0,S(18)); UI.stickStat.Position = UDim2.new(0,5,0,S(34))
-    else
-        UI.stickStat.Size = UDim2.new(1,-10,0,S(18)); UI.stickStat.Position = UDim2.new(0,5,0,S(58))
-    end
     UI.stickStat.BackgroundTransparency = 1
     UI.stickStat.Text = "🎯 เป้า: -"
     UI.stickStat.TextColor3 = Color3.fromRGB(200,220,255)
@@ -611,17 +780,16 @@ do
     UI.stickStat.TextTruncate = Enum.TextTruncate.AtEnd
     UI.stickStat.Parent = stickRow
 
-    -- 🆕 ปรับขนาด stickRow ให้สูงขึ้นสำหรับมือถือ
-    if not isPC then
-        stickRow.Size = UDim2.new(0.9,0,0,S(102))
-    end
+    -- 🆕 Auto-Aim toggle
+    UI.autoAimBtn = Instance.new("TextButton")
+    UI.autoAimBtn.BackgroundColor3 = Color3.fromRGB(60,120,80)
+    UI.autoAimBtn.BackgroundTransparency = 0.3
+    UI.autoAimBtn.Text = "🎯 Auto-Aim: เปิด"; UI.autoAimBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    UI.autoAimBtn.Font = Enum.Font.GothamBold; UI.autoAimBtn.TextSize = S(10)
+    UI.autoAimBtn.Parent = stickRow
+    Instance.new("UICorner", UI.autoAimBtn).CornerRadius = UDim.new(0,8)
 
     local stSliderRow = Instance.new("Frame")
-    if isPC then
-        stSliderRow.Size = UDim2.new(1,-10,0,S(22)); stSliderRow.Position = UDim2.new(0,5,0,S(56))
-    else
-        stSliderRow.Size = UDim2.new(1,-10,0,S(22)); stSliderRow.Position = UDim2.new(0,5,0,S(78))
-    end
     stSliderRow.BackgroundTransparency = 1; stSliderRow.Parent = stickRow
 
     UI.stDistLbl = Instance.new("TextLabel")
@@ -692,6 +860,49 @@ do
     end)
     setStDist(3)
 
+    -- 🆕 Layout manager สำหรับ stickRow (ปรับตำแหน่งตาม input)
+    local function layoutStickRow()
+        local hasExt = shouldShowKeyboardUI()
+        local showAutoAim = hasExt or isPC
+        if isPC then
+            UI.stickBtn.Size = UDim2.new(0.65,0,0,S(28)); UI.stickBtn.Position = UDim2.new(0,0,0,S(4))
+            UI.stickHK.Size = UDim2.new(0.32,0,0,S(28)); UI.stickHK.Position = UDim2.new(0.68,0,0,S(4))
+            UI.stickHK.Text = "⌨ ตั้งปุ่ม"
+            UI.stickHK.Visible = true
+            UI.stickStat.Position = UDim2.new(0,5,0,S(34))
+            UI.stickStat.Size = UDim2.new(1,-10,0,S(18))
+            UI.autoAimBtn.Size = UDim2.new(0,0,0,0); UI.autoAimBtn.Visible = false
+            stSliderRow.Position = UDim2.new(0,5,0,S(56))
+            stSliderRow.Size = UDim2.new(1,-10,0,S(22))
+            stickRow.Size = UDim2.new(0.9,0,0,S(82))
+        else
+            if hasExt then
+                UI.stickBtn.Size = UDim2.new(0.98,0,0,S(26)); UI.stickBtn.Position = UDim2.new(0.01,0,0,S(4))
+                UI.stickHK.Size = UDim2.new(0.48,0,0,S(22)); UI.stickHK.Position = UDim2.new(0.01,0,0,S(32))
+                UI.stickHK.Text = "⌨ ตั้งปุ่ม Hotkey"; UI.stickHK.TextSize = S(10)
+                UI.stickHK.Visible = true
+                UI.autoAimBtn.Size = UDim2.new(0.48,0,0,S(22)); UI.autoAimBtn.Position = UDim2.new(0.51,0,0,S(32))
+                UI.autoAimBtn.Visible = true
+                UI.stickStat.Position = UDim2.new(0,5,0,S(58))
+                UI.stickStat.Size = UDim2.new(1,-10,0,S(16))
+                stSliderRow.Position = UDim2.new(0,5,0,S(76))
+                stSliderRow.Size = UDim2.new(1,-10,0,S(22))
+                stickRow.Size = UDim2.new(0.9,0,0,S(102))
+            else
+                UI.stickBtn.Size = UDim2.new(0.98,0,0,S(28)); UI.stickBtn.Position = UDim2.new(0.01,0,0,S(4))
+                UI.stickHK.Visible = false
+                UI.autoAimBtn.Size = UDim2.new(0.98,0,0,S(22)); UI.autoAimBtn.Position = UDim2.new(0.01,0,0,S(34))
+                UI.autoAimBtn.Visible = true
+                UI.stickStat.Position = UDim2.new(0,5,0,S(60))
+                UI.stickStat.Size = UDim2.new(1,-10,0,S(16))
+                stSliderRow.Position = UDim2.new(0,5,0,S(78))
+                stSliderRow.Size = UDim2.new(1,-10,0,S(22))
+                stickRow.Size = UDim2.new(0.9,0,0,S(104))
+            end
+        end
+    end
+    layoutStickRow()
+
     UI.refreshStickUI = function()
         if B.st.stick then
             UI.stickBtn.Text = "🎯 เกาะ: เปิด"
@@ -721,7 +932,13 @@ do
             UI.stickHK.Text = "⌨ " .. B.st.stickHK.Name
             UI.stickHK.BackgroundColor3 = Color3.fromRGB(60,140,90)
         else
-            UI.stickHK.Text = isPC and "⌨ ตั้งปุ่ม" or "⌨ ตั้งปุ่ม Hotkey (ต้องมีคีย์บอร์ด)"
+            if isPC then
+                UI.stickHK.Text = "⌨ ตั้งปุ่ม"
+            elseif shouldShowKeyboardUI() then
+                UI.stickHK.Text = "⌨ ตั้งปุ่ม Hotkey"
+            else
+                UI.stickHK.Text = "⌨ ต้องต่อคีย์บอร์ด"
+            end
             UI.stickHK.BackgroundColor3 = Color3.fromRGB(90,60,60)
         end
     end
@@ -730,10 +947,25 @@ do
         if B.st.stick then stopStick() else startStick(nil) end
     end)
     UI.stickHK.MouseButton1Click:Connect(function()
+        if not shouldShowKeyboardUI() then
+            UI.toast("⚠️ ต้องต่อคีย์บอร์ดก่อน", Color3.fromRGB(255,180,80))
+            return
+        end
         B.st.stickWait = true
         B.st.waitSpeedHK = false
         B.st.waitFlyHK = false
+        B.st.toggleWait = false
         UI.refreshStickHKBtn()
+    end)
+    UI.autoAimBtn.MouseButton1Click:Connect(function()
+        B.st.stickAutoAim = not B.st.stickAutoAim
+        if B.st.stickAutoAim then
+            UI.autoAimBtn.Text = "🎯 Auto-Aim: เปิด"
+            UI.autoAimBtn.BackgroundColor3 = Color3.fromRGB(60,120,80)
+        else
+            UI.autoAimBtn.Text = "🎯 Auto-Aim: ปิด"
+            UI.autoAimBtn.BackgroundColor3 = Color3.fromRGB(90,60,60)
+        end
     end)
 
     -- Speed Row
@@ -788,67 +1020,116 @@ do
     Instance.new("UICorner", UI.flyBox).CornerRadius = UDim.new(0,10)
     addGlow(UI.flyBox, 0.7, false)
 
-    -- 🆕 Hotkey Row (แก้ไข: แสดงทั้ง PC และ Mobile)
-    local hkRow = Instance.new("Frame")
-    hkRow.Size = UDim2.new(0.9,0,0,S(28))
-    hkRow.BackgroundTransparency = 1; hkRow.LayoutOrder = 3
-    hkRow.Visible = true  -- 🆕 แสดงเสมอ
-    hkRow.Parent = cont
+    -- 🆕 Fly Hint Label
+    local flyHint = Instance.new("TextLabel")
+    flyHint.Size = UDim2.new(0.9,0,0,S(16))
+    flyHint.BackgroundTransparency = 1
+    flyHint.Text = "WASD + Space(ขึ้น) + Shift(ลง)"
+    flyHint.TextColor3 = Color3.fromRGB(150,180,220)
+    flyHint.Font = Enum.Font.Code
+    flyHint.TextSize = S(10)
+    flyHint.LayoutOrder = 2.5
+    flyHint.Parent = cont
 
-    local function mkHK(txt, x)
+    -- 🆕 Hotkey Row (Speed / Fly / Toggle)
+    local hkRow = Instance.new("Frame")
+    hkRow.Size = UDim2.new(0.9,0,0,S(56))
+    hkRow.BackgroundColor3 = Color3.fromRGB(18,18,25)
+    hkRow.BackgroundTransparency = 0.4
+    hkRow.LayoutOrder = 3
+    hkRow.Parent = cont
+    Instance.new("UICorner", hkRow).CornerRadius = UDim.new(0,10)
+    addGlow(hkRow, 0.7, false)
+
+    local hkTitle = Instance.new("TextLabel")
+    hkTitle.Size = UDim2.new(1,-10,0,S(16)); hkTitle.Position = UDim2.new(0,5,0,S(2))
+    hkTitle.BackgroundTransparency = 1
+    hkTitle.Text = "⌨ Hotkeys (ต้องมีคีย์บอร์ด)"
+    hkTitle.TextColor3 = CC.txtD
+    hkTitle.Font = Enum.Font.Code
+    hkTitle.TextSize = S(10)
+    hkTitle.TextXAlignment = Enum.TextXAlignment.Left
+    hkTitle.Parent = hkRow
+
+    local function mkHK(txt, x, w)
         local b = Instance.new("TextButton")
-        b.Size = UDim2.new(0.32,0,1,0); b.Position = UDim2.new(x,0,0,0)
+        b.Size = UDim2.new(w,0,0,S(24)); b.Position = UDim2.new(x,0,0,S(20))
         b.BackgroundColor3 = CC.bgL; b.BackgroundTransparency = 0.5
         b.Text = txt; b.TextColor3 = CC.txtD
         b.TextStrokeTransparency = 0.5; b.TextStrokeColor3 = Color3.fromRGB(0,0,0)
-        b.Font = Enum.Font.Gotham; b.TextSize = S(11); b.Parent = hkRow
+        b.Font = Enum.Font.Gotham; b.TextSize = S(10); b.Parent = hkRow
         Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
         addGlow(b, 0.75, false)
         return b
     end
 
-    local hkSpdB, hkFlyB, hkClr
+    local hkSpdB, hkFlyB, hkToggleB, hkClr
     local function refreshHKLabels()
         if hkSpdB then
-            hkSpdB.Text = B.hotkeys.speed.key and ("⌨ " .. B.hotkeys.speed.key.Name) or "Hotkey วิ่ง"
+            hkSpdB.Text = B.hotkeys.speed.key and ("⌨ " .. B.hotkeys.speed.key.Name) or "⌨ วิ่ง"
             hkSpdB.BackgroundColor3 = B.hotkeys.speed.key and Color3.fromRGB(60,140,90) or CC.bgL
         end
         if hkFlyB then
-            hkFlyB.Text = B.hotkeys.fly.key and ("⌨ " .. B.hotkeys.fly.key.Name) or "Hotkey บิน"
+            hkFlyB.Text = B.hotkeys.fly.key and ("⌨ " .. B.hotkeys.fly.key.Name) or "⌨ บิน"
             hkFlyB.BackgroundColor3 = B.hotkeys.fly.key and Color3.fromRGB(60,140,90) or CC.bgL
+        end
+        if hkToggleB then
+            hkToggleB.Text = B.st.toggleHK and ("⌨ " .. B.st.toggleHK.Name) or "⌨ ซ่อน"
+            hkToggleB.BackgroundColor3 = B.st.toggleHK and Color3.fromRGB(60,140,90) or CC.bgL
         end
     end
 
-    hkSpdB = mkHK("Hotkey วิ่ง", 0)
-    hkFlyB = mkHK("Hotkey บิน", 0.34)
+    hkSpdB = mkHK("⌨ วิ่ง", 0.01, 0.23)
+    hkFlyB = mkHK("⌨ บิน", 0.25, 0.23)
+    hkToggleB = mkHK("⌨ ซ่อน", 0.49, 0.23)
 
     hkClr = Instance.new("TextButton")
-    hkClr.Size = UDim2.new(0.32,0,1,0); hkClr.Position = UDim2.new(0.68,0,0,0)
+    hkClr.Size = UDim2.new(0.26,0,0,S(24)); hkClr.Position = UDim2.new(0.73,0,0,S(20))
     hkClr.BackgroundColor3 = CC.dgr; hkClr.BackgroundTransparency = 0.5
-    hkClr.Text = "ลบ Hotkey"; hkClr.TextColor3 = Color3.fromRGB(255,130,130)
-    hkClr.Font = Enum.Font.Gotham; hkClr.TextSize = S(11); hkClr.Parent = hkRow
+    hkClr.Text = "⌨ ลบ"; hkClr.TextColor3 = Color3.fromRGB(255,130,130)
+    hkClr.Font = Enum.Font.Gotham; hkClr.TextSize = S(10); hkClr.Parent = hkRow
     Instance.new("UICorner", hkClr).CornerRadius = UDim.new(0,8)
 
     hkSpdB.MouseButton1Click:Connect(function()
-        B.st.waitSpeedHK = true
-        B.st.waitFlyHK = false
-        B.st.stickWait = false
+        if not shouldShowKeyboardUI() then
+            UI.toast("⚠️ ต้องต่อคีย์บอร์ดก่อน", Color3.fromRGB(255,180,80))
+            return
+        end
+        B.st.waitSpeedHK = true; B.st.waitFlyHK = false
+        B.st.stickWait = false; B.st.toggleWait = false
         hkSpdB.Text = "⌨ กดปุ่ม..."
         hkSpdB.BackgroundColor3 = Color3.fromRGB(200,130,40)
-        if UI.refreshStickHKBtn then UI.refreshStickHKBtn() end
+        UI.refreshStickHKBtn()
     end)
     hkFlyB.MouseButton1Click:Connect(function()
-        B.st.waitFlyHK = true
-        B.st.waitSpeedHK = false
-        B.st.stickWait = false
+        if not shouldShowKeyboardUI() then
+            UI.toast("⚠️ ต้องต่อคีย์บอร์ดก่อน", Color3.fromRGB(255,180,80))
+            return
+        end
+        B.st.waitFlyHK = true; B.st.waitSpeedHK = false
+        B.st.stickWait = false; B.st.toggleWait = false
         hkFlyB.Text = "⌨ กดปุ่ม..."
         hkFlyB.BackgroundColor3 = Color3.fromRGB(200,130,40)
-        if UI.refreshStickHKBtn then UI.refreshStickHKBtn() end
+        UI.refreshStickHKBtn()
+    end)
+    hkToggleB.MouseButton1Click:Connect(function()
+        if not shouldShowKeyboardUI() then
+            UI.toast("⚠️ ต้องต่อคีย์บอร์ดก่อน", Color3.fromRGB(255,180,80))
+            return
+        end
+        B.st.toggleWait = true; B.st.waitSpeedHK = false
+        B.st.waitFlyHK = false; B.st.stickWait = false
+        hkToggleB.Text = "⌨ กดปุ่ม..."
+        hkToggleB.BackgroundColor3 = Color3.fromRGB(200,130,40)
+        UI.refreshStickHKBtn()
     end)
     hkClr.MouseButton1Click:Connect(function()
         B.hotkeys.speed.key = nil; B.hotkeys.speed.pressed = false
         B.hotkeys.fly.key = nil;   B.hotkeys.fly.pressed = false
+        B.st.toggleHK = nil
+        pcall(function() C:UnbindAction(B.TOGGLE_ACT) end)
         refreshHKLabels()
+        UI.toast("ลบ Hotkey ทั้งหมดแล้ว", Color3.fromRGB(255,180,80))
     end)
     refreshHKLabels()
     B.UI.refreshHKLabels = refreshHKLabels
@@ -1029,7 +1310,6 @@ do
     local function setAntiRec(on)
         B.st.antiRec = on
         B.saved.antiRec = on
-
         if on then
             B.st.antiRecBackup = {
                 guiEnabled = UI.gui.Enabled,
@@ -1048,7 +1328,6 @@ do
             antiScreen.Enabled = false
             B.st.antiRecBackup = {}
         end
-
         antiBtn.Text = on and "กันถ่ายจอ: เปิด" or "กันถ่ายจอ: ปิด"
         antiBtn.BackgroundColor3 = on and CC.act or Color3.fromRGB(30,15,45)
     end
@@ -1060,10 +1339,31 @@ do
     antiReturnBtn.MouseButton1Click:Connect(function()
         setAntiRec(false)
     end)
-    -- ═══════════════════════════════════════════
 
     -- ═══════════════════════════════════════════
-    -- 🛠 PAD (แก้ไข: ปุ่ม W/S ไม่ทับกับลูกศร)
+    -- 🆕 Toggle Script Hotkey
+    -- ═══════════════════════════════════════════
+    local function onToggleHK()
+        if not B.st.alive then return end
+        B.st.open = not B.st.open
+        UI.main.Visible = B.st.open
+    end
+    local function bindToggleHK(k)
+        pcall(function() C:UnbindAction(B.TOGGLE_ACT) end)
+        B.st.toggleHK = k
+        if k then
+            pcall(function()
+                C:BindAction(B.TOGGLE_ACT, function(_, s)
+                    if s == Enum.UserInputState.Begin then onToggleHK() end
+                    return Enum.ContextActionResult.Pass
+                end, false, k)
+            end)
+        end
+        if B.UI.refreshHKLabels then B.UI.refreshHKLabels() end
+    end
+
+    -- ═══════════════════════════════════════════
+    -- 🛠 PAD (Mobile Fly)
     -- ═══════════════════════════════════════════
     UI.pad = Instance.new("Frame")
     UI.pad.Size = UDim2.new(0, S(200), 0, S(200))
@@ -1168,6 +1468,19 @@ do
         B.saved.flyVal = B.st.flySpd
     end)
 
+    -- 🆕 เมื่อ input เปลี่ยน → อัปเดต UI
+    B.onInputChange(function(has, info)
+        if hkRow then hkRow.Visible = shouldShowKeyboardUI() end
+        layoutStickRow()
+        if UI.refreshStickHKBtn then UI.refreshStickHKBtn() end
+        if B.UI.refreshHKLabels then B.UI.refreshHKLabels() end
+        updateInputStatusLbl()
+        -- 🆕: ถ้า fly อยู่ และตรวจพบคีย์บอร์ด/เมาส์ → ซ่อน pad
+        if B.st.fly and B.UI.pad then
+            B.UI.pad.Visible = not (hasKeyboardForFly() or hasMouseForFly())
+        end
+    end)
+
     -- Main input
     U.InputBegan:Connect(function(i, gp)
         if gp then return end
@@ -1192,6 +1505,16 @@ do
                 B.hotkeys.fly.key = i.KeyCode; B.st.waitFlyHK = false
             end
             if B.UI.refreshHKLabels then B.UI.refreshHKLabels() end
+            return
+        end
+        if B.st.toggleWait then
+            if i.KeyCode == Enum.KeyCode.Escape then B.st.toggleWait=false; refreshHKLabels(); return end
+            if i.KeyCode == Enum.KeyCode.Backspace or i.KeyCode == Enum.KeyCode.Delete then
+                B.st.toggleWait=false; bindToggleHK(nil); return
+            end
+            if i.UserInputType == Enum.UserInputType.Keyboard and i.KeyCode ~= Enum.KeyCode.Unknown then
+                B.st.toggleWait=false; bindToggleHK(i.KeyCode)
+            end
             return
         end
         if B.st.stickWait then
@@ -1221,7 +1544,7 @@ do
             if B.st.noclip then enableNoclip() else disableNoclip() end
             B.noclipBusy = false
         end
-        -- 🆕 ให้ Hotkey ทำงานบนมือถือด้วย (ถ้ามีคีย์บอร์ดต่อ)
+        -- Hotkey ทำงานบนมือถือด้วย
         if B.hotkeys.speed.key and i.KeyCode == B.hotkeys.speed.key then
             if not B.hotkeys.speed.pressed then
                 B.hotkeys.speed.pressed = true
@@ -1444,7 +1767,6 @@ do
     sSpec.Parent = chk
     Instance.new("UICorner", sSpec).CornerRadius = UDim.new(0,10)
 
-    -- 🆕 แก้ไข: ปรับ scr.Size ให้ยืดหยุ่น ไม่ทับกับ cCls
     local scr = Instance.new("ScrollingFrame")
     scr.Size = UDim2.new(0.9, 0, 1, -S(102) - S(50))
     scr.Position = UDim2.new(0.05, 0, 0, S(102))
@@ -1465,7 +1787,6 @@ do
     scrP.PaddingTop = UDim.new(0,6); scrP.PaddingLeft = UDim.new(0,6)
     scrP.PaddingRight = UDim.new(0,6); scrP.PaddingBottom = UDim.new(0,6)
 
-    -- 🆕 แก้ไข: cCls อยู่เหนือ scroll
     local cCls = Instance.new("TextButton")
     cCls.Size = UDim2.new(0.9, 0, 0, S(34))
     cCls.Position = UDim2.new(0.05, 0, 1, -S(42))
@@ -1651,6 +1972,7 @@ do
         if B.conns.fly then B.conns.fly:Disconnect(); B.conns.fly=nil end
         if B.conns.stick then B.conns.stick:Disconnect(); B.conns.stick=nil end
         pcall(function() C:UnbindAction(B.STICK_ACT) end)
+        pcall(function() C:UnbindAction(B.TOGGLE_ACT) end)
         stopFly(); stopStick(); stopSpec(); disableNoclip()
         if B.st.fps then B.st.fps=false; disableFPS() end
         clearESP(); clearNames()
@@ -1724,5 +2046,10 @@ do
         end
     end)
 
-    print("[Boomxico V8.7] โหลดเสร็จ | Device:", dev, "| Scale:", scale, "| Auto-clear: เปิด")
+    -- 🆕 ตรวจสอบ input ครั้งแรก
+    checkInputNow()
+    hkRow.Visible = shouldShowKeyboardUI()
+
+    print("[Boomxico V8.8] โหลดเสร็จ | Device:", dev, "| Scale:", scale,
+          "| Keyboard:", B.input.hasKeyboard, "| Mouse:", B.input.hasMouse)
 end
